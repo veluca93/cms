@@ -5,6 +5,7 @@
 # Copyright © 2010-2012 Giovanni Mascellani <mascellani@poisson.phc.unipi.it>
 # Copyright © 2010-2012 Stefano Maggiolo <s.maggiolo@gmail.com>
 # Copyright © 2010-2012 Matteo Boscariol <boscarim@hotmail.com>
+# Copyright © 2013 Luca Wehrstedt <luca.wehrstedt@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -35,7 +36,16 @@ from cms.db.SQLAlchemyAll import SessionGen, Contest
 from cmscontrib.YamlImporter import YamlLoader
 
 
-class YamlReimporter:
+def update(old, new):
+    assert type(old) == type(new)
+    # assert old._col_props == new._col_props
+    # assert old._rel_props == new._rel_props
+
+    for prp in old._col_props:
+        setattr(old, prp.key, getattr(new, prp.key))
+
+
+class Reimporter:
     """This service load a contest from a tree structure "similar" to
     the one used in Italian IOI repository ***over*** a contest
     already in CMS.
@@ -48,7 +58,7 @@ class YamlReimporter:
 
         self.file_cacher = FileCacher()
 
-        self.loader = YamlLoader(self.file_cacher, False, None, None)
+        self.loader = YamlLoader(self.path, self.file_cacher)
 
     def run(self):
         """Interface to make the class do its job."""
@@ -59,102 +69,77 @@ class YamlReimporter:
         two.
 
         """
-        # Create the dict corresponding to the new contest.
-        yaml_contest = self.loader.import_contest(self.path)
-        yaml_users = dict(((x['username'], x) for x in yaml_contest['users']))
-        yaml_tasks = dict(((x['name'], x) for x in yaml_contest['tasks']))
-
         with SessionGen(commit=False) as session:
 
-            # Create the dict corresponding to the old contest, from
-            # the database.
-            contest = Contest.get_from_id(self.contest_id, session)
-            cms_contest = contest.export_to_dict()
-            cms_users = dict((x['username'], x) for x in cms_contest['users'])
-            cms_tasks = dict((x['name'], x) for x in cms_contest['tasks'])
+            # Load the old contest from the database.
+            old_contest = Contest.get_from_id(self.contest_id, session)
+            old_users = dict((x.username, x) for x in old_contest.users)
+            old_tasks = dict((x.name, x) for x in old_contest.tasks)
 
-            # Delete the old contest from the database.
-            session.delete(contest)
-            session.flush()
+            # Load the new contest from the filesystem.
+            new_contest = self.loader.import_contest()
+            new_users = dict((x.username, x) for x in new_contest.users)
+            new_tasks = dict((x.name, x) for x in new_contest.tasks)
 
-            # Do the actual merge: first of all update all users of
-            # the old contest with the corresponding ones from the new
-            # contest; if some user is present in the old contest but
-            # not in the new one we check if we have to fail or remove
-            # it and, in the latter case, add it to a list
-            users_to_remove = []
-            for user_num, user in enumerate(cms_contest['users']):
-                if user['username'] in yaml_users:
-                    yaml_user = yaml_users[user['username']]
+            update(old_contest, new_contest)
 
-                    yaml_user['submissions'] = user['submissions']
-                    yaml_user['user_tests'] = user['user_tests']
-                    yaml_user['questions'] = user['questions']
-                    yaml_user['messages'] = user['messages']
+            # Do the actual merge: compare all users of the old and of
+            # the new contest and see if we need to create, update or
+            # delete them. Delete only if authorized, fail otherwise.
+            users = set(old_users.keys()) | set(new_users.keys())
+            for user in users:
+                old_user = old_users.get(user, None)
+                new_user = new_users.get(user, None)
 
-                    cms_contest['users'][user_num] = yaml_user
+                if old_user is None:
+                    # Create a new user.
+                    logger.info("Creating user %s" % user)
+                    # XXX
+                elif new_user is not None:
+                    # Update an existing user.
+                    logger.info("Updating user %s" % user)
+                    update(old_user, new_user)
                 else:
+                    # Delete an existing user.
                     if self.force:
-                        logger.warning(
-                            "User %s exists in old contest, but "
-                            "not in the new one." % user['username'])
-                        users_to_remove.append(user_num)
-                        # FIXME Do we need really to do this, given that
-                        # we already deleted the whole contest?
-                        session.delete(contest.users[user_num])
+                        logger.info("Deleting user %s" % user)
+                        # XXX
                     else:
                         logger.critical(
                             "User %s exists in old contest, but "
                             "not in the new one. Use -f to force."
-                            % user['username'])
+                            % user)
                         return False
 
-            # Delete the users
-            for user_num in users_to_remove:
-                del cms_contest['users'][user_num]
+            # The same for tasks.
+            tasks = set(old_tasks.keys()) | set(new_tasks.keys())
+            for task in tasks:
+                old_task = old_tasks.get(task, None)
+                new_task = new_tasks.get(task, None)
 
-            # The append the users in the new contest, not present in
-            # the old one.
-            for user in yaml_contest['users']:
-                if user['username'] not in cms_users.keys():
-                    cms_contest['users'].append(user)
-
-            # The same for tasks: update old tasks.
-            tasks_to_remove = []
-            for task_num, task in enumerate(cms_contest['tasks']):
-                if task['name'] in yaml_tasks:
-                    yaml_task = yaml_tasks[task['name']]
-
-                    cms_contest['tasks'][task_num] = yaml_task
+                if old_task is None:
+                    # Create a new task.
+                    logger.info("Creating task %s" % task)
+                    # XXX
+                elif new_task is not None:
+                    # Update an existing task.
+                    logger.info("Updating task %s" % task)
+                    update(old_task, new_task)
                 else:
+                    # Delete an existing task.
                     if self.force:
-                        logger.warning("Task %s exists in old contest, but "
-                                       "not in the new one." % task['name'])
-                        tasks_to_remove.append(task_num)
-                        # FIXME Do we need really to do this, given that
-                        # we already deleted the whole contest?
-                        session.delete(contest.tasks[task_num])
+                        logger.info("Deleting task %s" % task)
+                        # XXX
                     else:
-                        logger.error("Task %s exists in old contest, but "
-                                     "not in the new one. Use -f to force."
-                                     % task['name'])
+                        logger.critical(
+                            "Task %s exists in old contest, but "
+                            "not in the new one. Use -f to force."
+                            % task)
                         return False
 
-            # Delete the tasks
-            for task_num in tasks_to_remove:
-                del cms_contest['tasks'][task_num]
+            session.commit()
 
-            # And add new tasks.
-            for task in yaml_contest['tasks']:
-                if task['name'] not in cms_tasks.keys():
-                    cms_contest['tasks'].append(task)
-
-            # Reimport the contest in the db, with the previous ID.
-            contest = Contest.import_from_dict(cms_contest)
-            contest.id = self.contest_id
-            session.add(contest)
-            session.flush()
-
+        with SessionGen(commit=False) as session:
             logger.info("Analyzing database.")
             analyze_all_tables(session)
             session.commit()
