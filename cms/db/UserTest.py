@@ -201,6 +201,26 @@ class UserTestResult(Base):
     # SQLAlchemy.
     # executables (dict of UserTestExecutable objects indexed by filename)
 
+    @classmethod
+    def get_from_id_or_create(cls, user_test_id, dataset_id, session):
+        # Find an existing user_test result.
+        user_test_result = UserTestResult.get_from_id(
+            (user_test_id, dataset_id), session)
+
+        # Create one if it doesn't exist.
+        if user_test_result is None:
+            user_test = UserTest.get_from_id(user_test_id, session)
+            dataset = Dataset.get_from_id(dataset_id, session)
+            if user_test is None or dataset is None:
+                return None
+
+            user_test_result = UserTestResult(
+                user_test_result, dataset=dataset)
+
+            session.add(user_test_result)
+
+        return user_test_result
+
     def compiled(self):
         """Return if the user test has been compiled.
 

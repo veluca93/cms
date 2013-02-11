@@ -222,6 +222,26 @@ class SubmissionResult(Base):
     # executables (dict of Executable objects indexed by filename)
     # evaluations (list of Evaluation objects, one for testcase)
 
+    @classmethod
+    def get_from_id_or_create(cls, submission_id, dataset_id, session):
+        # Find an existing submission result.
+        submission_result = SubmissionResult.get_from_id(
+            (submission_id, dataset_id), session)
+
+        # Create one if it doesn't exist.
+        if submission_result is None:
+            submission = Submission.get_from_id(submission_id, session)
+            dataset = Dataset.get_from_id(dataset_id, session)
+            if submission is None or dataset is None:
+                return None
+
+            submission_result = SubmissionResult(
+                submission=submission, dataset=dataset)
+
+            session.add(submission_result)
+
+        return submission_result
+
     def compiled(self):
         """Return if the submission has been compiled.
 
