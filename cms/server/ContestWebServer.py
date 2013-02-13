@@ -1270,7 +1270,7 @@ class SubmissionDetailsHandler(BaseHandler):
             else:
                 details = sr.public_score_details
 
-            if sr.scored():
+            if score_type is not None and sr.scored():
                 details = score_type.get_html_details(details, self._)
             else:
                 details = None
