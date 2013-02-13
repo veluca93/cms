@@ -685,18 +685,34 @@ class ScoringService(Service):
                 return
 
             # Assign score to the submission.
-            scorer = self.scorers[dataset_id]
-            scorer.add_submission(submission_id, dataset_id,
-                                  submission.timestamp,
-                                  submission.user.username,
-                                  submission_result.evaluated(),
-                                  dict((ev.num,
-                                        {"outcome": ev.outcome,
-                                         "text": ev.text,
-                                         "time": ev.execution_time,
-                                         "memory": ev.memory_used})
-                                       for ev in submission_result.evaluations),
-                                  submission.tokened())
+            scorer = self.scorers.get(dataset_id)
+            if scorer is None:
+                # We may get here because the scorer threw an exception whilst
+                # initalizing, or we may be scoring for the wrong contest.
+                logger.error(
+                    "Not scoring submission %d(%d) because scorer is broken." %
+                        (submission_id, dataset_id))
+                return
+
+            try:
+                scorer.add_submission(
+                    submission_id, dataset_id,
+                    submission.timestamp,
+                    submission.user.username,
+                    submission_result.evaluated(),
+                    dict((ev.num,
+                          {"outcome": ev.outcome,
+                           "text": ev.text,
+                           "time": ev.execution_time,
+                           "memory": ev.memory_used})
+                         for ev in submission_result.evaluations),
+                    submission.tokened())
+            except:
+                logger.error("Failed to score submission %d(%d). "
+                             "Scorer threw an exception: %s" %
+                             (submission_id, dataset_id,
+                              traceback.format_exc()))
+                return
 
             # Mark submission as scored.
             self.submission_results_scored.add((submission_id, dataset_id))
