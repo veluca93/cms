@@ -26,6 +26,8 @@ db objects must be imported from this module.
 
 import sys
 
+from sqlalchemy.orm import joinedload
+
 from cms.db.SQLAlchemyUtils import Base, metadata, Session, \
     ScopedSession, SessionGen
 from cms.db.Contest import Contest, Announcement
@@ -49,7 +51,9 @@ def get_submissions(self):
 
     """
     return self.sa_session.query(Submission)\
-               .join(Task).filter(Task.contest == self).all()
+               .join(Task).filter(Task.contest == self)\
+               .options(joinedload(Submission.token))\
+               .options(joinedload(Submission.results)).all()
 
 
 def get_submission_results(self):
@@ -74,7 +78,8 @@ def get_user_tests(self):
 
     """
     return self.sa_session.query(UserTest)\
-               .join(Task).filter(Task.contest == self).all()
+               .join(Task).filter(Task.contest == self)\
+               .options(joinedload(UserTest.results)).all()
 
 
 def get_user_test_results(self):
