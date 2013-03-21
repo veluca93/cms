@@ -52,6 +52,20 @@ def get_submissions(self):
                .join(Task).filter(Task.contest == self).all()
 
 
+def get_submission_results(self):
+    """Returns a list of submission results for all submissions in
+    the current contest, as evaluated against the active dataset
+    for each task.
+
+    returns (list): list of submission results.
+
+    """
+    return self.sa_session.query(SubmissionResult)\
+               .join(Task).filter(Task.contest == self)\
+               .filter(Task.active_dataset_id == SubmissionResult.dataset_id)\
+               .all()
+
+
 def get_user_tests(self):
     """Returns a list of user tests (with the information about the
     corresponding user) referring to the contest.
@@ -62,8 +76,24 @@ def get_user_tests(self):
     return self.sa_session.query(UserTest)\
                .join(Task).filter(Task.contest == self).all()
 
+
+def get_user_test_results(self):
+    """Returns a list of user_test results for all user_tests in
+    the current contest, as evaluated against the active dataset
+    for each task.
+
+    returns (list): list of user test results.
+
+    """
+    return self.sa_session.query(UserTestResult)\
+               .join(Task).filter(Task.contest == self)\
+               .filter(Task.active_dataset_id == UserTestResult.dataset_id)\
+               .all()
+
 Contest.get_submissions = get_submissions
+Contest.get_submission_results = get_submission_results
 Contest.get_user_tests = get_user_tests
+Contest.get_user_test_results = get_user_test_results
 
 
 # The following is a method of User that cannot be put in the right

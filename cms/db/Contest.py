@@ -166,7 +166,9 @@ class Contest(Base):
 
     # Moreover, we have the following methods.
     # get_submissions (defined in SQLAlchemyAll)
+    # get_submission_results (defined in SQLAlchemyAll)
     # get_user_tests (defined in SQLAlchemyAll)
+    # get_user_test_results (defined in SQLAlchemyAll)
 
     # FIXME - Use SQL syntax
     def get_task(self, task_name):
