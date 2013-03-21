@@ -27,8 +27,8 @@ directly (import it from SQLAlchemyAll).
 
 from datetime import timedelta
 
-from sqlalchemy.schema import Column, ForeignKey, CheckConstraint, \
-    UniqueConstraint
+from sqlalchemy.schema import Column, ForeignKey, ForeignKeyConstraint, \
+    CheckConstraint, UniqueConstraint
 from sqlalchemy.types import Boolean, Integer, Float, String, Interval
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.orderinglist import ordering_list
@@ -55,7 +55,8 @@ class Task(Base):
     # Auto increment primary key.
     id = Column(
         Integer,
-        primary_key=True)
+        primary_key=True,
+        autoincrement='ignore_fk')
 
     # Number of the task for sorting.
     num = Column(
@@ -91,34 +92,6 @@ class Task(Base):
         String,
         nullable=False,
         default="[]")
-
-    # Time and memory limits for every testcase.
-    time_limit = Column(
-        Float,
-        nullable=True)
-    memory_limit = Column(
-        Integer,
-        nullable=True)
-
-    # Name of the TaskType child class suited for the task.
-    task_type = Column(
-        String,
-        nullable=False)
-
-    # Parameters for the task type class, JSON encoded.
-    task_type_parameters = Column(
-        String,
-        nullable=False)
-
-    # Name of the ScoreType child class suited for the task.
-    score_type = Column(
-        String,
-        nullable=False)
-
-    # Parameters for the score type class, JSON encoded.
-    score_type_parameters = Column(
-        String,
-        nullable=False)
 
     # Parameter to define the token behaviour. See Contest.py for
     # details. The only change is that these parameters influence the
@@ -184,12 +157,27 @@ class Task(Base):
         nullable=False,
         default=0)
 
+    # Active Dataset (id and object) currently being used for scoring.
+    active_dataset_id = Column(
+        Integer,
+        ForeignKey('datasets.id',
+                   onupdate="SET NULL", ondelete="SET NULL",
+                   use_alter=True,
+                   name='fk_active_dataset_id'),
+        nullable=True)
+    active_dataset = relationship(
+        'Dataset',
+        primaryjoin='Task.active_dataset_id==Dataset.id',
+        post_update=True,
+        uselist=False,
+        single_parent=True,
+        cascade='all, delete-orphan')
+
     # Follows the description of the fields automatically added by
     # SQLAlchemy.
+    # datasets (list of Dataset objects)
     # submission_format (list of SubmissionFormatElement objects)
-    # testcases (list of Testcase objects)
     # attachments (dict of Attachment objects indexed by filename)
-    # managers (dict of Manager objects indexed by filename)
     # statements (dict of Statement objects indexed by language code)
     # submissions (list of Submission objects)
     # user_tests (list of UserTest objects)
@@ -200,6 +188,79 @@ class Task(Base):
     scorer = None
 
 
+class Dataset(Base):
+    """Class to store the information about a data set. Not to be used
+    directly (import it from SQLAlchemyAll).
+
+    """
+    __tablename__ = 'datasets'
+    __table_args__ = (
+        UniqueConstraint('task_id', 'description',
+                         name='cst_datasets_task_id_description'),
+    )
+
+    # Auto increment primary key.
+    id = Column(
+        Integer,
+        primary_key=True)
+
+    # Task (id and object) owning the dataset.
+    task_id = Column(
+        Integer,
+        ForeignKey(Task.id,
+                   onupdate="CASCADE", ondelete="CASCADE"),
+        nullable=False,
+        autoincrement=False)
+    task = relationship(
+        Task,
+        primaryjoin='Task.id==Dataset.task_id',
+        foreign_keys=task_id,
+        backref=backref('datasets',
+                        cascade="all, delete-orphan",
+                        passive_deletes=True))
+
+    description = Column(
+        String)
+
+    autojudge = Column(
+        Boolean,
+        nullable=False,
+        default=False)
+
+    # Time and memory limits for every testcase.
+    time_limit = Column(
+        Float,
+        nullable=True)
+    memory_limit = Column(
+        Integer,
+        nullable=True)
+
+    # Name of the TaskType child class suited for the task.
+    task_type = Column(
+        String,
+        nullable=False)
+
+    # Parameters for the task type class, JSON encoded.
+    task_type_parameters = Column(
+        String,
+        nullable=False)
+
+    # Name of the ScoreType child class suited for the task.
+    score_type = Column(
+        String,
+        nullable=False)
+
+    # Parameters for the score type class, JSON encoded.
+    score_type_parameters = Column(
+        String,
+        nullable=False)
+
+    # Follows the description of the fields automatically added by
+    # SQLAlchemy.
+    # managers (dict of Manager objects indexed by filename)
+    # testcases (list of Testcase objects)
+
+
 class Testcase(Base):
     """Class to store the information about a testcase. Not to be used
     directly (import it from SQLAlchemyAll).
@@ -207,8 +268,8 @@ class Testcase(Base):
     """
     __tablename__ = 'task_testcases'
     __table_args__ = (
-        UniqueConstraint('task_id', 'num',
-                         name='cst_testcases_task_id_num'),
+        UniqueConstraint('dataset_id', 'num',
+                         name='cst_testcases_dataset_id_num'),
     )
 
     # Auto increment primary key.
@@ -236,15 +297,15 @@ class Testcase(Base):
         String,
         nullable=False)
 
-    # Task (id and object) owning the testcase.
-    task_id = Column(
+    # Dataset (id and object) owning the testcase.
+    dataset_id = Column(
         Integer,
-        ForeignKey(Task.id,
+        ForeignKey(Dataset.id,
                    onupdate="CASCADE", ondelete="CASCADE"),
         nullable=False,
         index=True)
-    task = relationship(
-        Task,
+    dataset = relationship(
+        Dataset,
         backref=backref('testcases',
                         collection_class=ordering_list('num'),
                         order_by=[num],
@@ -329,8 +390,8 @@ class Manager(Base):
     """
     __tablename__ = 'managers'
     __table_args__ = (
-        UniqueConstraint('task_id', 'filename',
-                         name='cst_managers_task_id_filename'),
+        UniqueConstraint('dataset_id', 'filename',
+                         name='cst_managers_dataset_id_filename'),
     )
 
     # Auto increment primary key.
@@ -346,15 +407,15 @@ class Manager(Base):
         String,
         nullable=False)
 
-    # Task (id and object) owning the manager.
-    task_id = Column(
+    # Dataset (id and object) owning the manager.
+    dataset_id = Column(
         Integer,
-        ForeignKey(Task.id,
+        ForeignKey(Dataset.id,
                    onupdate="CASCADE", ondelete="CASCADE"),
         nullable=False,
         index=True)
-    task = relationship(
-        Task,
+    dataset = relationship(
+        Dataset,
         backref=backref('managers',
                         collection_class=smart_mapped_collection('filename'),
                         cascade="all, delete-orphan",
