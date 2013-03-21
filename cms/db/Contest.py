@@ -232,14 +232,16 @@ class Contest(Base):
                 files.add(file_.digest)
 
             # Enumerate managers
-            for file_ in task.managers.values():
-                files.add(file_.digest)
+            for dataset in task.datasets:
+                for file_ in dataset.managers.values():
+                    files.add(file_.digest)
 
             # Enumerate testcases
             if not light:
-                for testcase in task.testcases:
-                    files.add(testcase.input)
-                    files.add(testcase.output)
+                for dataset in task.datasets:
+                    for testcase in dataset.testcases:
+                        files.add(testcase.input)
+                        files.add(testcase.output)
 
         if not skip_submissions:
             for submission in self.get_submissions():
@@ -250,16 +252,19 @@ class Contest(Base):
 
                 # Enumerate executables
                 if not light:
-                    for file_ in submission.executables.values():
-                        files.add(file_.digest)
+                    for sr in submission.results:
+                        for file_ in sr.executables.itervalues():
+                            files.add(file_.digest)
 
         if not skip_user_tests:
             for user_test in self.get_user_tests():
 
                 files.add(user_test.input)
 
-                if not light and user_test.output is not None:
-                    files.add(user_test.output)
+                if not light:
+                    for ur in user_test.results:
+                        if ur.output is not None:
+                            files.add(ur.output)
 
                 # Enumerate files
                 for file_ in user_test.files.values():
@@ -271,8 +276,9 @@ class Contest(Base):
 
                 # Enumerate executables
                 if not light:
-                    for file_ in user_test.executables.values():
-                        files.add(file_.digest)
+                    for ur in user_test.results:
+                        for file_ in ur.executables.values():
+                            files.add(file_.digest)
 
         return files
 
