@@ -34,8 +34,8 @@ from cms.db.Task import Task, Manager, Dataset, Testcase, Attachment, \
     SubmissionFormatElement, Statement
 from cms.db.Submission import Submission, SubmissionResult, Token, \
     Evaluation, File, Executable
-from cms.db.UserTest import UserTest, UserTestFile, UserTestExecutable, \
-    UserTestManager
+from cms.db.UserTest import UserTest, UserTestResult, UserTestFile, \
+    UserTestExecutable, UserTestManager
 from cms.db.FSObject import FSObject
 
 # The following are methods of Contest that cannot be put in the right
