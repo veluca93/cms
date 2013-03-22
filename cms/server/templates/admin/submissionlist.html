@@ -37,7 +37,7 @@
       {% for s in sorted(submissions, key=lambda s: s.timestamp, reverse=True) %}
         {% if current_score_type is None %}
           {% try %}
-            {% set current_score_type = get_score_type(submission=s, dataset_id=shown_dataset.id) %}
+            {% set current_score_type = get_score_type(dataset=shown_dataset) %}
           {% except %}
           {% end %}
         {% end %}
@@ -45,7 +45,7 @@
         <td><a href="{{ url_root }}/submission/{{ s.id }}/{{ shown_dataset.id }}">{{ str(s.timestamp) }}</a></td>
         <td><a href="{{ url_root }}/user/{{ s.user.id }}">{{ s.user.username }}</a></td>
         <td>
-          {% set sr = s.get_result(shown_dataset.id) %}
+          {% set sr = s.get_result(shown_dataset) %}
           {% if sr is None or sr.compilation_outcome is None %}
           Compiling...
           {% else %}
