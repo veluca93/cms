@@ -34,6 +34,7 @@ import threading
 import simplejson as json
 import base64
 import time
+import traceback
 import socket
 import ssl
 
@@ -400,6 +401,7 @@ class ScoringService(Service):
                         logger.critical(
                             "Cannot get score type for task %s(%d): %r" %
                             (task.name, dataset.id, error))
+                        logger.critical(traceback.format_exc())
                         self.exit()
             session.commit()
 
