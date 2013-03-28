@@ -24,33 +24,33 @@ from cms import logger
 from cms.db.SQLAlchemyAll import SessionGen, Contest, User, Task, Submission
 
 
-def get_submissions(contest_id=None,
-                    user_id=None,
-                    task_id=None,
-                    submission_id=None,
-                    session=None):
-    """Search for submissions that match the given criteria
+def get_submission_results(contest_id=None, user_id=None, task_id=None,
+                           submission_id=None, dataset_id=None, session=None):
+    """Search for submission results that match the given criteria
 
-    The submissions will be returned as a list, and the first four
-    parameters determine the filters used to decide which submissions
-    to include. Some of them are incompatible, that is they cannot be
-    non-None at the same time. When this happens it means that one of
-    the parameters "implies" the other (for example, giving the user
-    already gives the contest it belongs to). Trying to give them both
-    is useless and could only lead to inconsistencies and errors.
+    The submission results will be returned as a list, and the first
+    five parameters determine the filters used to decide which
+    submission results to include. Some of them are incompatible, that
+    is they cannot be non-None at the same time. When this happens it
+    means that one of the parameters "implies" the other (for example,
+    giving the user already gives the contest it belongs to). Trying to
+    give them both is useless and could only lead to inconsistencies
+    and errors.
 
     contest_id (int): id of the contest to invalidate, or None.
     user_id (int): id of the user to invalidate, or None.
     task_id (int): id of the task to invalidate, or None.
     submission_id (int): id of the submission to invalidate, or None.
+    dataset_id (int): id of the dataset to invalidate, or None.
     session (Session): the database session to use, or None to use a
                        temporary one.
 
     """
     if session is None:
         with SessionGen(commit=False) as session:
-            return get_submissions(
-                contest_id, user_id, task_id, submission_id, session)
+            return get_submission_results(
+                contest_id, user_id, task_id, submission_id, dataset_id,
+                session)
 
     if task_id is not None and contest_id is not None:
         raise ValueError("contest_id is superfluous if task_id is given")
@@ -62,15 +62,29 @@ def get_submissions(contest_id=None,
         raise ValueError("task_id is superfluous if submission_id is given")
     if submission_id is not None and user_id is not None:
         raise ValueError("user_id is superfluous if submission_id is given")
+    if dataset_id is not None and task_id is not None:
+        raise ValueError("task_id is superfluous if dataset_id is given")
+    if dataset_id is not None and contest_id is not None:
+        raise ValueError("contest_id is superfluous if dataset_id is given")
 
-    q = session.query(Submission)
+    # If we don't already know the task (either via task_id or,
+    # indirectly, via submission_id) get it from dataset_id.
+    if submission_id is None and task_id is None and \
+            dataset_id is not None:
+        dataset = Dataset.get_from_id(dataset_id, session)
+        task_id = dataset.task_id
+
+    q = session.query(SubmissionResult)
+    if dataset_id is not None:
+        q = q.filter(SubmissionResult.dataset_id == dataset_id)
     if submission_id is not None:
-        q = q.filter(Submission.id == submission_id)
+        q = q.filter(SubmissionResult.submission_id == submission_id)
     if user_id is not None:
-        q = q.filter(Submission.user_id == user_id)
+        q = q.join(Submission).filter(Submission.user_id == user_id)
     if task_id is not None:
-        q = q.filter(Submission.task_id == task_id)
+        q = q.join(Submission).filter(Submission.task_id == task_id)
     if contest_id is not None:
-        q = q.join(User).filter(User.contest_id == contest_id)\
+        q = q.join(Submission)\
+             .join(User).filter(User.contest_id == contest_id)\
              .join(Task).filter(Task.contest_id == contest_id)
     return q.all()
