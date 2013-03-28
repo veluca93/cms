@@ -88,3 +88,20 @@ def get_submission_results(contest_id=None, user_id=None, task_id=None,
              .join(User).filter(User.contest_id == contest_id)\
              .join(Task).filter(Task.contest_id == contest_id)
     return q.all()
+
+
+def get_autojudge_datasets(task):
+    """Determine the datasets for which automatic judging is enabled for a
+    given task.
+
+    task (Task): the task to query.
+
+    returns (list): list of dataset objects.
+    """
+    autojudge = []
+
+    for dataset in task.datasets:
+        if dataset is task.active_dataset or dataset.autojudge:
+            autojudge.append(dataset)
+
+    return autojudge
