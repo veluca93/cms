@@ -801,7 +801,7 @@ class AddManagerHandler(BaseHandler):
                 make_datetime(),
                 "Manager storage failed",
                 repr(error))
-            self.redirect("/add_manager/%s" % dataset_id)
+            self.redirect("/add_manager/%s" % dataset.id)
             return
 
         self.sql_session = Session()
@@ -833,7 +833,7 @@ def copy_dataset(new_dataset, old_dataset, clone_results, clone_managers,
     new_dataset (Dataset): target dataset to copy into.
     old_dataset (Dataset): original dataset to copy from.
     clone_results (bool): copy submission results.
-    handler (BaseHandler): just to extract the information about AWS.
+    clone_managers (bool): copy dataset managers.
     sql_session (Session): the session to commit.
 
     """
@@ -1209,7 +1209,7 @@ class AddTestcaseHandler(BaseHandler):
                 make_datetime(),
                 "Invalid data",
                 "Please give a numerical value for the position.")
-            self.redirect("/add_testcase/%s" % (dataset_id))
+            self.redirect("/add_testcase/%s" % dataset_id)
             return
 
         try:
@@ -1220,7 +1220,7 @@ class AddTestcaseHandler(BaseHandler):
                 make_datetime(),
                 "Invalid data",
                 "Please fill both input and output.")
-            self.redirect("/add_testcase/%s" % (dataset_id))
+            self.redirect("/add_testcase/%s" % dataset_id)
             return
 
         public = self.get_argument("public", None) is not None
@@ -1239,7 +1239,7 @@ class AddTestcaseHandler(BaseHandler):
                 make_datetime(),
                 "Testcase storage failed",
                 repr(error))
-            self.redirect("/add_testcase/%s" % (dataset_id))
+            self.redirect("/add_testcase/%s" % dataset_id)
             return
 
         self.sql_session = Session()
@@ -1256,7 +1256,7 @@ class AddTestcaseHandler(BaseHandler):
                 make_datetime(),
                 "Testcase storage failed",
                 repr(error))
-            self.redirect("/add_testcase/%s" % (dataset_id))
+            self.redirect("/add_testcase/%s" % dataset_id)
             return
 
         self.application.service.scoring_service.reinitialize()

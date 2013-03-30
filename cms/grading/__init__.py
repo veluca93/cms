@@ -666,7 +666,7 @@ def task_score(user, task):
     # / evaluated / scored.
     partial = False
 
-    submissions = [s for s in user.submissions if s.task_id == task.id]
+    submissions = [s for s in user.submissions if s.task is task]
     submissions.sort(key=lambda s: s.timestamp)
 
     if submissions == []:
