@@ -218,7 +218,7 @@ def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
                                 os.path.join(base_dir, exe))
                 shutil.rmtree(tempdir)
 
-        def test_src(exe, input_num, task_type, assume=None):
+        def test_src(exe, assume=None):
             print "Testing solution %s" % (exe)
             cormgr = ''
             if task_type == ['Batch', 'Comp'] or \
@@ -226,14 +226,7 @@ def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
                 cormgr = 'cor/correttore'
             test_testcases(
                 base_dir,
-                input_num,
-                box_path,
                 exe,
-                yaml_conf['timeout'],
-                yaml_conf['memlimit'],
-                task_type[0],
-                task_type[1],
-                cormgr=cormgr,
                 assume=assume)
 
         actions.append((srcs,
@@ -249,9 +242,7 @@ def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
         test_actions.append((test_deps,
                              ['test_%s' % (os.path.split(exe)[1])],
                              functools.partial(test_src,
-                                               exe_EVAL,
-                                               input_num,
-                                               task_type),
+                                               exe_EVAL),
                              'test solution (compiled with -DEVAL)'))
 
     return actions + test_actions
