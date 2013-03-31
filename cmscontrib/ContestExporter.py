@@ -40,7 +40,8 @@ from sqlalchemy.types import \
 from cms import logger
 from cms.db import ask_for_contest
 from cms.db.FileCacher import FileCacher
-from cms.db.SQLAlchemyAll import SessionGen, Contest, Submission, UserTest
+from cms.db.SQLAlchemyAll import SessionGen, Contest, \
+    Submission, UserTest, SubmissionResult, UserTestResult
 
 from cmscontrib import sha1sum
 from cmscommon.DateTime import make_timestamp
@@ -260,6 +261,10 @@ class ContestExporter:
             if self.skip_user_tests and other_cls is UserTest:
                 continue
 
+            # Skip generated data if requested
+            if self.light and other_cls in (SubmissionResult, UserTestResult):
+                continue
+
             val = getattr(obj, prp.key)
             if val is None:
                 data[prp.key] = None
@@ -323,8 +328,7 @@ def main():
     group.add_argument("-nF", "--no-files", action="store_true",
                        help="only export database structure, ignore files")
     parser.add_argument("-l", "--light", action="store_true",
-                        help="light export (without testcases and "
-                        "automatically generated files)")
+                        help="light export (without generated data)")
     parser.add_argument("-nS", "--no-submissions", action="store_true",
                         help="don't export submissions")
     parser.add_argument("-nU", "--no-user-tests", action="store_true",

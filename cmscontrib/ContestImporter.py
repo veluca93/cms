@@ -47,7 +47,7 @@ import cms.db.SQLAlchemyAll as class_hook
 from cms import logger
 from cms.db.FileCacher import FileCacher
 from cms.db.SQLAlchemyAll import metadata, SessionGen, Contest, \
-    Submission, UserTest
+    Submission, UserTest, SubmissionResult, UserTestResult
 
 from cmscontrib import sha1sum
 from cmscommon.DateTime import make_datetime
@@ -183,6 +183,11 @@ class ContestImporter:
 
                     # Skip user_tests if requested
                     if self.skip_user_tests and isinstance(v, UserTest):
+                        del self.objs[k]
+
+                    # Skip generated data if requested
+                    if self.light and (isinstance(v, SubmissionResult) or
+                                       isinstance(v, UserTestResult)):
                         del self.objs[k]
 
                 # Mmh... kind of fragile interface
@@ -378,8 +383,7 @@ def main():
     group.add_argument("-nF", "--no-files", action="store_true",
                        help="only import database structure, ignore files")
     parser.add_argument("-l", "--light", action="store_true",
-                        help="light import (without testcases and "
-                        "automatically generated files)")
+                        help="light import (without generated data)")
     parser.add_argument("-nS", "--no-submissions", action="store_true",
                         help="don't import submissions")
     parser.add_argument("-nU", "--no-user-tests", action="store_true",
