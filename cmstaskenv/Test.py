@@ -66,6 +66,8 @@ def test_testcases(base_dir, soluzione, assume=None):
         taskdata["num"] = 1
         task = loader.get_task(taskdata)
 
+    #TODO: change this to task.active_dataset when cmsMake returns a non-None
+    # active_dataset
     dataset = task.datasets[0]
     digest = file_cacher.put_file(
         path=os.path.join(base_dir, soluzione),
