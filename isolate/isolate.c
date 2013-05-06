@@ -1309,9 +1309,10 @@ cleanup(void)
   cg_remove();
 }
 
-static void
-run(char **argv)
+static int
+run(void *arg)
 {
+  char** argv = arg;
   if (!dir_exists("box"))
     die("Box directory not found, did you run `isolate --init'?");
 
@@ -1328,13 +1329,14 @@ run(char **argv)
   box_pid = clone(
     box_inside,			// Function to execute as the body of the new process
     argv,			// Pass our stack
-    SIGCHLD | CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS | CLONE_NEWPID,
+    SIGCHLD | CLONE_NEWIPC | CLONE_NEWNET | CLONE_NEWNS,
     argv);			// Pass the arguments
   if (box_pid < 0)
     die("clone: %m");
   if (!box_pid)
     die("clone returned 0");
   box_keeper();
+  return 0;
 }
 
 static void
@@ -1450,6 +1452,7 @@ int
 main(int argc, char **argv)
 {
   int c;
+  int cpid;
   char *sep;
   enum opt_code mode = 0;
 
@@ -1567,7 +1570,12 @@ main(int argc, char **argv)
     case OPT_RUN:
       if (optind >= argc)
 	usage("--run mode requires a command to run\n");
-      run(argv+optind);
+      cpid = clone(run, argv+optind, SIGCHLD | CLONE_NEWPID, argv+optind);  
+      if (cpid < 0)
+        die("clone: %m");
+      if (!cpid)
+        die("clone returned 0");
+      waitpid(cpid, NULL, 0);
       break;
     case OPT_CLEANUP:
       if (optind < argc)
