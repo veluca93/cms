@@ -980,27 +980,6 @@ signal_int(int unused UNUSED)
   err("SG: Interrupted");
 }
 
-#define PROC_BUF_SIZE 4096
-static void
-read_proc_file(char *buf, char *name, int *fdp)
-{
-  int c;
-
-  if (!*fdp)
-    {
-      sprintf(buf, "/proc/%d/%s", (int) box_pid, name);
-      *fdp = open(buf, O_RDONLY);
-      if (*fdp < 0)
-	die("open(%s): %m", buf);
-    }
-  lseek(*fdp, 0, SEEK_SET);
-  if ((c = read(*fdp, buf, PROC_BUF_SIZE-1)) < 0)
-    die("read on /proc/$pid/%s: %m", name);
-  if (c >= PROC_BUF_SIZE-1)
-    die("/proc/$pid/%s too long", name);
-  buf[c] = 0;
-}
-
 static int
 get_wall_time_ms(void)
 {
@@ -1016,33 +995,9 @@ get_run_time_ms(struct rusage *rus)
   if (cg_timing)
     return cg_get_run_time_ms();
 
-  if (rus)
-    {
-      struct timeval total;
-      timeradd(&rus->ru_utime, &rus->ru_stime, &total);
-      return total.tv_sec*1000 + total.tv_usec/1000;
-    }
-
-  char buf[PROC_BUF_SIZE], *x;
-  int utime, stime;
-  static int proc_stat_fd;
-
-  read_proc_file(buf, "stat", &proc_stat_fd);
-  x = buf;
-  while (*x && *x != ' ')
-    x++;
-  while (*x == ' ')
-    x++;
-  if (*x++ != '(')
-    die("proc stat syntax error 1");
-  while (*x && (*x != ')' || x[1] != ' '))
-    x++;
-  while (*x == ')' || *x == ' ')
-    x++;
-  if (sscanf(x, "%*c %*d %*d %*d %*d %*d %*d %*d %*d %*d %*d %d %d", &utime, &stime) != 2)
-    die("proc stat syntax error 2");
-
-  return (utime + stime) * 1000 / ticks_per_sec;
+  struct timeval total;
+  timeradd(&rus->ru_utime, &rus->ru_stime, &total);
+  return total.tv_sec*1000 + total.tv_usec/1000;
 }
 
 static void
@@ -1055,14 +1010,6 @@ check_timeout(void)
         err("TO: Time limit exceeded (wall clock)");
       if (verbose > 1)
         fprintf(stderr, "[wall time check: %d msec]\n", wall_ms);
-    }
-  if (timeout)
-    {
-      int ms = get_run_time_ms(NULL);
-      if (verbose > 1)
-	fprintf(stderr, "[time check: %d msec]\n", ms);
-      if (ms > timeout && ms > extra_timeout)
-	err("TO: Time limit exceeded");
     }
 }
 
@@ -1118,10 +1065,10 @@ box_keeper(void)
 	  interr[n] = 0;
 	  die("%s", interr);
 	}
+      final_stats(&rus);
 
       if (WIFEXITED(stat))
 	{
-	  final_stats(&rus);
 	  if (WEXITSTATUS(stat))
 	    {
 	      meta_printf("exitcode:%d\n", WEXITSTATUS(stat));
@@ -1139,14 +1086,14 @@ box_keeper(void)
 	}
       else if (WIFSIGNALED(stat))
 	{
+	  if (WTERMSIG(stat) == 9 && timeout && total_ms + 50 > timeout)
+	    err("TO: Time limit exceeded");
 	  meta_printf("exitsig:%d\n", WTERMSIG(stat));
-	  final_stats(&rus);
 	  err("SG: Caught fatal signal %d", WTERMSIG(stat));
 	}
       else if (WIFSTOPPED(stat))
 	{
 	  meta_printf("exitsig:%d\n", WSTOPSIG(stat));
-	  final_stats(&rus);
 	  err("SG: Stopped by signal %d", WSTOPSIG(stat));
 	}
       else
@@ -1232,12 +1179,16 @@ setup_rlimits(void)
 {
 #define RLIM(res, val) setup_rlim("RLIMIT_" #res, RLIMIT_##res, val)
 
+  int time = extra_timeout > timeout ? extra_timeout : timeout;
+  time = (time % 1000 ? time + 1000 : time) / 1000;
+
   if (memory_limit)
     RLIM(AS, memory_limit * 1024);
 
   RLIM(STACK, (stack_limit ? (rlim_t)stack_limit * 1024 : RLIM_INFINITY));
   RLIM(NOFILE, 64);
   RLIM(MEMLOCK, 0);
+  RLIM(CPU, time);
 
   if (max_processes)
     RLIM(NPROC, max_processes);
@@ -1294,8 +1245,6 @@ init(void)
 
   cg_prepare();
   set_quota();
-
-  puts(box_dir);
 }
 
 static void
