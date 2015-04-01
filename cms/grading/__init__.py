@@ -38,7 +38,7 @@ from sqlalchemy.orm import joinedload
 
 from cms import config, \
     LANG_C, LANG_CPP, LANG_PASCAL, LANG_PYTHON, LANG_PHP, LANG_JAVA, \
-    SCORE_MODE_MAX
+    LANG_AMPL, SCORE_MODE_MAX
 from cms.db import Submission
 from cms.grading.Sandbox import Sandbox
 
@@ -251,7 +251,7 @@ def get_compilation_commands(language, source_filenames, executable_filename,
                       source_filenames[0]))[0], executable_filename]
         commands.append(py_command)
         commands.append(mv_command)
-    elif language == LANG_PHP:
+    elif language == LANG_PHP or language == LANG_AMPL:
         command = ["/bin/cp", source_filenames[0], executable_filename]
         commands.append(command)
     elif language == LANG_JAVA:
@@ -268,7 +268,7 @@ def get_evaluation_commands(language, executable_filename):
     """Return the evaluation commands.
 
     The evaluation commands are for the given language and executable
-    filename. Each command is a list of strings, suitable to be passed
+    filename. Each command i a list of strings, suitable to be passed
     to the methods in subprocess package.
 
     language (string): one of the recognized languages.
@@ -288,6 +288,9 @@ def get_evaluation_commands(language, executable_filename):
         commands.append(command)
     elif language == LANG_PHP:
         command = ["/usr/bin/php5", executable_filename]
+        commands.append(command)
+    elif language == LANG_AMPL:
+        command = ["/opt/ampl/ampl", executable_filename]
         commands.append(command)
     else:
         raise ValueError("Unknown language %s." % language)
@@ -511,6 +514,11 @@ def evaluation_step_before_run(sandbox, command,
     allow_dirs = [] if allow_dirs is None else allow_dirs
     writable_files = [] if writable_files is None else writable_files
 
+    if command[0] == "/opt/ampl/ampl":
+        sandbox.max_processes = 2
+        sandbox.set_env["PATH"] = "/opt/ampl/"
+        sandbox.dirs += [("/opt/ampl", "/opt/ampl/", None)]
+
     # Set sandbox parameters suitable for evaluation.
     if time_limit > 0:
         sandbox.timeout = time_limit
@@ -538,6 +546,8 @@ def evaluation_step_before_run(sandbox, command,
         if name is not None:
             writable_files.append(name)
     sandbox.allow_writing_only(writable_files)
+    if command[0] == "/opt/ampl/ampl":
+        sandbox.allow_writing_all()
 
     # Actually run the evaluation command.
     logger.debug("Starting execution step.")

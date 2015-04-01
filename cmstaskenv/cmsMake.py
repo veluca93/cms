@@ -43,7 +43,7 @@ from cmstaskenv.Test import test_testcases, clean_test_env
 
 SOL_DIRNAME = 'sol'
 SOL_FILENAME = 'soluzione'
-SOL_EXTS = ['.cpp', '.c', '.pas']
+SOL_EXTS = ['.cpp', '.c', '.pas', '.mod']
 CHECK_DIRNAME = 'cor'
 CHECK_EXTS = SOL_EXTS
 TEXT_DIRNAME = 'testo'
@@ -213,7 +213,22 @@ def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
             test_deps.append('cor/manager')
 
         def compile_src(srcs, exe, for_evaluation, lang, assume=None):
-            if lang != 'pas' or len(srcs) == 1:
+            if lang == 'mod' and for_evaluation == False:
+                with open(exe, 'w') as f:
+                    f.write("""#!/bin/sh -e
+                        > input.txt
+                        export IFS=''
+
+                        while read fin
+                        do
+                            echo $fin >> input.txt
+                        done
+                        /opt/ampl/ampl %s
+                        cat output.txt
+                        rm input.txt output.txt
+                    """ % srcs[0])
+                os.chmod(exe, 0755)
+            elif lang != 'pas' or len(srcs) == 1:
                 compilation_commands = get_compilation_commands(
                     lang,
                     srcs,
