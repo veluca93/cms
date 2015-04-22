@@ -38,7 +38,7 @@ from sqlalchemy.orm import joinedload
 
 from cms import config, \
     LANG_C, LANG_CPP, LANG_PASCAL, LANG_PYTHON, LANG_PHP, LANG_JAVA, \
-    LANG_AMPL, SCORE_MODE_MAX
+    LANG_AMPL, LANG_GMPL, SCORE_MODE_MAX
 from cms.db import Submission
 from cms.grading.Sandbox import Sandbox
 
@@ -251,7 +251,7 @@ def get_compilation_commands(language, source_filenames, executable_filename,
                       source_filenames[0]))[0], executable_filename]
         commands.append(py_command)
         commands.append(mv_command)
-    elif language == LANG_PHP or language == LANG_AMPL:
+    elif language in [LANG_PHP, LANG_AMPL, LANG_GMPL]:
         command = ["/bin/cp", source_filenames[0], executable_filename]
         commands.append(command)
     elif language == LANG_JAVA:
