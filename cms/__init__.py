@@ -62,7 +62,8 @@ LANG_PASCAL = "pas"
 LANG_PYTHON = "py"
 LANG_PHP = "php"
 LANG_JAVA = "java"
-LANG_AMPL = "mod"
+LANG_AMPL = "ampl"
+LANG_GMPL = "gmpl"
 
 LANGUAGE_NAMES = {
     LANG_C: "C",
@@ -72,10 +73,11 @@ LANGUAGE_NAMES = {
     LANG_PHP: "PHP",
     LANG_JAVA: "Java",
     LANG_AMPL: "AMPL",
+    LANG_GMPL: "GMPL",
 }
 
 LANGUAGES = [LANG_C, LANG_CPP, LANG_PASCAL, LANG_PYTHON, LANG_PHP, LANG_JAVA, 
-    LANG_AMPL]
+    LANG_AMPL, LANG_GMPL]
 DEFAULT_LANGUAGES = [LANG_C, LANG_CPP, LANG_PASCAL]
 
 # A reference for extension-based automatic language detection.
@@ -91,7 +93,8 @@ SOURCE_EXT_TO_LANGUAGE_MAP = {
     ".py": LANG_PYTHON,
     ".php": LANG_PHP,
     ".java": LANG_JAVA,
-    ".mod": LANG_AMPL,
+    ".ampl": LANG_AMPL,
+    ".gmpl": LANG_GMPL,
 }
 
 # Our preferred source file and header file extension for each language.
@@ -102,8 +105,8 @@ LANGUAGE_TO_SOURCE_EXT_MAP = {
     LANG_PYTHON: ".py",
     LANG_PHP: ".php",
     LANG_JAVA: ".java",
-    LANG_AMPL: ".mod",
-    
+    LANG_AMPL: ".ampl",
+    LANG_GMPL: ".gmpl",
 }
 LANGUAGE_TO_HEADER_EXT_MAP = {
     LANG_C: ".h",

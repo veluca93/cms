@@ -43,7 +43,7 @@ from cmstaskenv.Test import test_testcases, clean_test_env
 
 SOL_DIRNAME = 'sol'
 SOL_FILENAME = 'soluzione'
-SOL_EXTS = ['.cpp', '.c', '.pas', '.mod']
+SOL_EXTS = ['.cpp', '.c', '.pas', '.ampl', '.gmpl']
 CHECK_DIRNAME = 'cor'
 CHECK_EXTS = SOL_EXTS
 TEXT_DIRNAME = 'testo'
@@ -213,7 +213,7 @@ def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
             test_deps.append('cor/manager')
 
         def compile_src(srcs, exe, for_evaluation, lang, assume=None):
-            if lang == 'mod' and for_evaluation == False:
+            if lang == 'ampl' and for_evaluation == False:
                 with open(exe, 'w') as f:
                     f.write("""#!/bin/sh -e
                         > input.txt
@@ -224,6 +224,21 @@ def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
                             echo $fin >> input.txt
                         done
                         /opt/ampl/ampl %s
+                        cat output.txt
+                        rm input.txt output.txt
+                    """ % srcs[0])
+                os.chmod(exe, 0755)
+            elif lang == 'gmpl' and for_evaluation == False:
+                with open(exe, 'w') as f:
+                    f.write("""#!/bin/sh -e
+                        > input.txt
+                        export IFS=''
+
+                        while read fin
+                        do
+                            echo $fin >> input.txt
+                        done
+                        /usr/bin/glpsol -m %s -d input.txt > /dev/NULL
                         cat output.txt
                         rm input.txt output.txt
                     """ % srcs[0])
