@@ -293,7 +293,7 @@ def get_evaluation_commands(language, executable_filename):
         command = ["/opt/ampl/ampl", executable_filename]
         commands.append(command)
     elif language == LANG_GMPL:
-        command = ["/usr/bin/glpsol", "-m", executable_filename, "-d", "input.txt", ">", "/dev/null"]
+        command = ["/usr/bin/glpsol", "-m", executable_filename, "-d", "input.txt"]
         commands.append(command)
     else:
         raise ValueError("Unknown language %s." % language)
