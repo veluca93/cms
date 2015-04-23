@@ -238,7 +238,7 @@ def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
                         do
                             echo $fin >> input.txt
                         done
-                        /usr/bin/glpsol -m %s -d input.txt > /dev/NULL
+                        /usr/bin/glpsol -m %s -d input.txt > /dev/null
                         cat output.txt
                         rm input.txt output.txt
                     """ % srcs[0])

@@ -292,6 +292,9 @@ def get_evaluation_commands(language, executable_filename):
     elif language == LANG_AMPL:
         command = ["/opt/ampl/ampl", executable_filename]
         commands.append(command)
+    elif language == LANG_GMPL:
+        command = ["/usr/bin/glpsol", "-m", executable_filename, "-d", "input.txt", ">", "/dev/null"]
+        commands.append(command)
     else:
         raise ValueError("Unknown language %s." % language)
     return commands
@@ -519,6 +522,11 @@ def evaluation_step_before_run(sandbox, command,
         sandbox.set_env["PATH"] = "/opt/ampl/"
         sandbox.dirs += [("/opt/ampl", "/opt/ampl/", None)]
 
+    if command[0] == "/usr/bin/glpsol":
+        sandbox.max_processes = 2
+#        sandbox.set_env["PATH"] = "/opt/ampl/"
+#        sandbox.dirs += [("/opt/ampl", "/opt/ampl/", None)]
+
     # Set sandbox parameters suitable for evaluation.
     if time_limit > 0:
         sandbox.timeout = time_limit
@@ -546,7 +554,7 @@ def evaluation_step_before_run(sandbox, command,
         if name is not None:
             writable_files.append(name)
     sandbox.allow_writing_only(writable_files)
-    if command[0] == "/opt/ampl/ampl":
+    if command[0] == "/opt/ampl/ampl" or command[0] == "/usr/bin/glpsol":
         sandbox.allow_writing_all()
 
     # Actually run the evaluation command.
