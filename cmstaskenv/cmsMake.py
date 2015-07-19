@@ -2,11 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # Contest Management System - http://cms-dev.github.io/
-# Copyright © 2010-2014 Giovanni Mascellani <mascellani@poisson.phc.unipi.it>
-# Copyright © 2010-2012 Stefano Maggiolo <s.maggiolo@gmail.com>
-# Copyright © 2010-2012 Matteo Boscariol <boscarim@hotmail.com>
-# Copyright © 2013 Luca Wehrstedt <luca.wehrstedt@gmail.com>
-# Copyright © 2014-2015 Luca Versari <veluca93@gmail.com>
+# Copyright © 2015 Luca Versari <veluca93@gmail.com>
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -21,732 +17,484 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import unicode_literals
-
-import argparse
-import io
 import os
-import sys
 import subprocess
-import copy
-import functools
-import shutil
-import tempfile
 import yaml
-import logging
 
-from cms import utf8_decoder
+from cms import SOURCE_EXT_TO_LANGUAGE_MAP, LANG_PYTHON
+from cms.db import Manager, Executable, File
+from cms.db.filecacher import FileCacher
 from cms.grading import get_compilation_commands
-from cmstaskenv.Test import test_testcases, clean_test_env
-from cmscommon.terminal import move_cursor, add_color_to_string, \
-    colors, directions
+from cms.grading.Job import CompilationJob, EvaluationJob
+from cms.grading.tasktypes import get_task_type
 
-SOL_DIRNAME = 'sol'
-SOL_FILENAME = 'soluzione'
-SOL_EXTS = ['.cpp', '.c', '.pas']
-CHECK_DIRNAME = 'cor'
-CHECK_EXTS = SOL_EXTS
-TEXT_DIRNAME = 'testo'
-TEXT_TEX = 'testo.tex'
-TEXT_PDF = 'testo.pdf'
-TEXT_AUX = 'testo.aux'
-TEXT_LOG = 'testo.log'
-INPUT0_TXT = 'input0.txt'
-OUTPUT0_TXT = 'output0.txt'
-GEN_DIRNAME = 'gen'
-GEN_GEN = 'GEN'
-GEN_BASENAME = 'generatore'
-GEN_EXTS = ['.py', '.sh', '.cpp', '.c', '.pas']
-VALIDATOR_BASENAME = 'valida'
-GRAD_BASENAME = 'grader'
-STUB_BASENAME = 'stub'
-INPUT_DIRNAME = 'input'
-OUTPUT_DIRNAME = 'output'
-RESULT_DIRNAME = 'result'
-
-DATA_DIRS = [os.path.join('.', 'cmstaskenv', 'data'),
-             os.path.join('/', 'usr', 'local', 'share', 'cms', 'cmsMake')]
-
-logger = logging.getLogger()
+BUILDDIR = 'generated-files'
+TEXTDIR = 'text'
+GENDIR = 'gen'
+VALDIR = 'val'
+SOLDIR = 'sol'
+MANDIR = 'managers'
+EXDIR = 'examples'
+SOLNAME = 'solution'
+TEXTNAME = 'text'
+TCFILE = 'testcases.yaml'
 
 
-def detect_data_dir():
-    for _dir in DATA_DIRS:
-        if os.path.exists(_dir):
-            return os.path.abspath(_dir)
-
-DATA_DIR = detect_data_dir()
+def iofile(name, io):
+    return os.path.join(io, "%s_%s.txt" % (io, name))
 
 
-def endswith2(string, suffixes):
-    """True if string ends with one of the given suffixes.
-
-    """
-    return any(filter(lambda x: string.endswith(x), suffixes))
+def infile(name):
+    return iofile(name, "input")
 
 
-def basename2(string, suffixes):
-    """If string ends with one of the specified suffixes, returns its
-    basename (i.e., itself after removing the suffix) and the suffix
-    packed in a tuple. Otherwise returns None.
+def outfile(name):
+    return iofile(name, "output")
 
-    """
+
+def link(src, dst):
+    dst = os.path.join(BUILDDIR, dst)
     try:
-        idx = map(lambda x: string.endswith(x), suffixes).index(True)
-    except ValueError:
-        return None, None
-    return string[:-len(suffixes[idx])], string[-len(suffixes[idx]):]
-
-
-def call(base_dir, args, stdin=None, stdout=None, stderr=None, env=None):
-    print("> Executing command %s in dir %s" %
-          (" ".join(args), base_dir), file=sys.stderr)
-    if env is None:
-        env = {}
-    env2 = copy.copy(os.environ)
-    env2.update(env)
-    res = subprocess.call(args, stdin=stdin, stdout=stdout, stderr=stderr,
-                          cwd=base_dir, env=env2)
-    if res != 0:
-        print("Subprocess returned with error", file=sys.stderr)
-        sys.exit(1)
-
-
-def detect_task_name(base_dir):
-    return os.path.split(os.path.realpath(base_dir))[1]
-
-
-def parse_task_yaml(base_dir):
-    parent_dir = os.path.split(os.path.realpath(base_dir))[0]
-
-    # We first look for the yaml file inside the task folder,
-    # and eventually fallback to a yaml file in its parent folder.
-    yaml_path = os.path.join(base_dir, "task.yaml")
-
+        os.makedirs(os.path.dirname(dst))
+    except:
+        pass
     try:
-        with io.open(yaml_path, "rt", encoding="utf-8") as yaml_file:
-            conf = yaml.load(yaml_file)
-    except IOError:
-        yaml_path = os.path.join(parent_dir, "%s.yaml" %
-                                 (detect_task_name(base_dir)))
-
-        with io.open(yaml_path, "rt", encoding="utf-8") as yaml_file:
-            conf = yaml.load(yaml_file)
-    return conf
+        os.unlink(dst)
+    except:
+        pass
+    os.symlink(src, dst)
 
 
-def detect_task_type(base_dir):
-    sol_dir = os.path.join(base_dir, SOL_DIRNAME)
-    check_dir = os.path.join(base_dir, CHECK_DIRNAME)
-    grad_present = os.path.exists(sol_dir) and \
-        any(filter(lambda x: x.startswith(GRAD_BASENAME + '.'),
-                   os.listdir(sol_dir)))
-    stub_present = os.path.exists(sol_dir) and \
-        any(filter(lambda x: x.startswith(STUB_BASENAME + '.'),
-                   os.listdir(sol_dir)))
-    cor_present = os.path.exists(check_dir) and \
-        any(filter(lambda x: x.startswith('correttore.'),
-                   os.listdir(check_dir)))
-    man_present = os.path.exists(check_dir) and \
-        any(filter(lambda x: x.startswith('manager.'),
-                   os.listdir(check_dir)))
-
-    if not (cor_present or man_present or stub_present or grad_present):
-        return ["Batch", "Diff"]  # TODO Could also be an OutputOnly
-    elif not (man_present or stub_present or grad_present) and cor_present:
-        return ["Batch", "Comp"]  # TODO Could also be an OutputOnly
-    elif not (cor_present or man_present or stub_present) and grad_present:
-        return ["Batch", "Grad"]
-    elif not (man_present or stub_present) and cor_present and grad_present:
-        return ["Batch", "GradComp"]
-    elif not (cor_present or grad_present) and man_present and stub_present:
-        return ["Communication", ""]
-    else:
-        return ["Invalid", ""]
-
-
-def noop():
-    pass
-
-
-def build_sols_list(base_dir, task_type, in_out_files, yaml_conf):
-    if yaml_conf.get('only_gen', False):
-        return []
-
-    sol_dir = os.path.join(base_dir, SOL_DIRNAME)
-    entries = map(lambda x: os.path.join(SOL_DIRNAME, x), os.listdir(sol_dir))
-    sources = filter(lambda x: endswith2(x, SOL_EXTS), entries)
-
-    actions = []
-    test_actions = []
-    for src in sources:
-        exe, lang = basename2(src, SOL_EXTS)
-        # Delete the dot
-        lang = lang[1:]
-        exe_EVAL = "%s_EVAL" % (exe)
-
-        # Ignore things known to be auxiliary files
-        if exe == os.path.join(SOL_DIRNAME, GRAD_BASENAME):
-            continue
-        if exe == os.path.join(SOL_DIRNAME, STUB_BASENAME):
-            continue
-        if lang == 'pas' and exe.endswith('lib'):
-            continue
-
-        srcs = []
-        # The grader, when present, must be in the first position of
-        # srcs; see docstring of get_compilation_commands().
-        if task_type == ['Batch', 'Grad'] or \
-                task_type == ['Batch', 'GradComp']:
-            srcs.append(os.path.join(SOL_DIRNAME,
-                                     GRAD_BASENAME + '.%s' % (lang)))
-        if task_type == ['Communication', '']:
-            srcs.append(os.path.join(SOL_DIRNAME,
-                                     STUB_BASENAME + '.%s' % (lang)))
-        srcs.append(src)
-
-        test_deps = \
-            [exe_EVAL, os.path.join(TEXT_DIRNAME, TEXT_PDF)] + in_out_files
-        if task_type == ['Batch', 'Comp'] or \
-                task_type == ['Batch', 'GradComp']:
-            test_deps.append('cor/correttore')
-        if task_type == ['Communication', '']:
-            test_deps.append('cor/manager')
-
-        def compile_src(srcs, exe, for_evaluation, lang, assume=None):
-            if lang != 'pas' or len(srcs) == 1:
-                compilation_commands = get_compilation_commands(
-                    lang,
-                    srcs,
-                    exe,
-                    for_evaluation=for_evaluation)
-                for command in compilation_commands:
-                    call(base_dir, command)
-                    move_cursor(directions.UP, erase=True, stream=sys.stderr)
-
-            # When using Pascal with graders, file naming conventions
-            # require us to do a bit of trickery, i.e., performing the
-            # compilation in a separate temporary directory
-            else:
-                tempdir = tempfile.mkdtemp()
-                task_name = detect_task_name(base_dir)
-                new_srcs = [os.path.split(srcs[0])[1],
-                            '%s.pas' % (task_name)]
-                new_exe = os.path.split(srcs[1])[1][:-4]
-                shutil.copyfile(os.path.join(base_dir, srcs[0]),
-                                os.path.join(tempdir, new_srcs[0]))
-                shutil.copyfile(os.path.join(base_dir, srcs[1]),
-                                os.path.join(tempdir, new_srcs[1]))
-                lib_filename = '%slib.pas' % (task_name)
-                if os.path.exists(os.path.join(SOL_DIRNAME, lib_filename)):
-                    shutil.copyfile(os.path.join(SOL_DIRNAME, lib_filename),
-                                    os.path.join(tempdir, lib_filename))
-                compilation_commands = get_compilation_commands(
-                    lang,
-                    new_srcs,
-                    new_exe,
-                    for_evaluation=for_evaluation)
-                for command in compilation_commands:
-                    call(tempdir, command)
-                    move_cursor(directions.UP, erase=True, stream=sys.stderr)
-                shutil.copyfile(os.path.join(tempdir, new_exe),
-                                os.path.join(base_dir, exe))
-                shutil.copymode(os.path.join(tempdir, new_exe),
-                                os.path.join(base_dir, exe))
-                shutil.rmtree(tempdir)
-
-        def test_src(exe, lang, assume=None):
-            # Solution names begin with sol/ and end with _EVAL, we strip that
-            print(
-                "Testing solution",
-                add_color_to_string(exe[4:-5], colors.BLACK, bold=True)
-            )
-            test_testcases(
-                base_dir,
-                exe,
-                language=lang,
-                assume=assume)
-
-        actions.append(
-            (srcs,
-             [exe],
-             functools.partial(compile_src, srcs, exe, False, lang),
-             'compile solution'))
-        actions.append(
-            (srcs,
-             [exe_EVAL],
-             functools.partial(compile_src, srcs, exe_EVAL, True, lang),
-             'compile solution with -DEVAL'))
-
-        test_actions.append((test_deps,
-                             ['test_%s' % (os.path.split(exe)[1])],
-                             functools.partial(test_src, exe_EVAL, lang),
-                             'test solution (compiled with -DEVAL)'))
-
-    return actions + test_actions
-
-
-def build_checker_list(base_dir, task_type):
-    check_dir = os.path.join(base_dir, CHECK_DIRNAME)
-    actions = []
-
-    if os.path.exists(check_dir):
-        entries = map(lambda x: os.path.join(CHECK_DIRNAME, x),
-                      os.listdir(check_dir))
-        sources = filter(lambda x: endswith2(x, SOL_EXTS), entries)
-        for src in sources:
-            exe, lang = basename2(src, CHECK_EXTS)
-            # Delete the dot
-            lang = lang[1:]
-
-            def compile_check(src, exe, assume=None):
-                commands = get_compilation_commands(lang, [src], exe)
-                for command in commands:
-                    call(base_dir, command)
-
-            actions.append(([src], [exe],
-                            functools.partial(compile_check, src, exe),
-                            'compile checker'))
-
-    return actions
-
-
-def build_text_list(base_dir, task_type):
-    text_tex = os.path.join(TEXT_DIRNAME, TEXT_TEX)
-    text_pdf = os.path.join(TEXT_DIRNAME, TEXT_PDF)
-    text_aux = os.path.join(TEXT_DIRNAME, TEXT_AUX)
-    text_log = os.path.join(TEXT_DIRNAME, TEXT_LOG)
-
-    def make_pdf(assume=None):
-        call(base_dir,
-             ['pdflatex', '-output-directory', TEXT_DIRNAME,
-              '-interaction', 'batchmode', text_tex],
-             env={'TEXINPUTS': '.:%s:%s/file:' % (TEXT_DIRNAME, TEXT_DIRNAME)})
-
-    def make_dummy_pdf(assume=None):
-        try:
-            open(text_pdf, 'r')
-        except IOError:
-            logger.warning(
-                "%s does not exist, creating an empty file..." % text_pdf
-            )
-            open(text_pdf, 'w')
-
-    actions = []
-    if os.path.exists(text_tex):
-        actions.append(([text_tex], [text_pdf, text_aux, text_log],
-                        make_pdf, 'compile to PDF'))
-    else:
-        actions.append(([TEXT_DIRNAME], [text_pdf], make_dummy_pdf,
-                        "create empty PDF file"))
-    return actions
-
-
-def iter_GEN(name):
-    st = 0
-    for line in io.open(name, "rt", encoding="utf-8"):
-        line = line.strip()
-        splitted = line.split('#', 1)
-
-        if len(splitted) == 1:
-            # This line represents a testcase, otherwise
-            # it's just a blank
-            if splitted[0] != '':
-                yield (False, splitted[0], st)
-
-        else:
-            testcase, comment = splitted
-            testcase = testcase.strip()
-            comment = comment.strip()
-            testcase_detected = testcase != ''
-            copy_testcase_detected = comment.startswith("COPY:")
-            subtask_detected = comment.startswith('ST:')
-
-            flags = [testcase_detected,
-                     copy_testcase_detected,
-                     subtask_detected]
-            if len([x for x in flags if x]) > 1:
-                raise Exception("No testcase and command in"
-                                " the same line allowed")
-
-            if testcase_detected:
-                yield (False, testcase, st)
-
-            if copy_testcase_detected:
-                yield (True, comment[5:].strip(), st)
-
-            # This line starts a new subtask
-            if subtask_detected:
-                st += 1
-
-
-def build_gen_list(base_dir, task_type):
-    input_dir = os.path.join(base_dir, INPUT_DIRNAME)
-    output_dir = os.path.join(base_dir, OUTPUT_DIRNAME)
-    gen_dir = os.path.join(base_dir, GEN_DIRNAME)
-    entries = os.listdir(gen_dir)
-    sources = filter(lambda x: endswith2(x, GEN_EXTS), entries)
-    gen_exe = None
-    validator_exe = None
-
-    for src in sources:
-        base, lang = basename2(src, GEN_EXTS)
-        if base == GEN_BASENAME:
-            gen_exe = os.path.join(GEN_DIRNAME, base)
-            gen_src = os.path.join(GEN_DIRNAME, base + lang)
-            gen_lang = lang[1:]
-        elif base == VALIDATOR_BASENAME:
-            validator_exe = os.path.join(GEN_DIRNAME, base)
-            validator_src = os.path.join(GEN_DIRNAME, base + lang)
-            validator_lang = lang[1:]
-    if gen_exe is None:
-        raise Exception("Couldn't find generator")
-    if validator_exe is None:
-        raise Exception("Couldn't find validator")
-    gen_GEN = os.path.join(GEN_DIRNAME, GEN_GEN)
-
-    sol_exe = os.path.join(SOL_DIRNAME, SOL_FILENAME)
-
-    # Count non-trivial lines in GEN and establish which external
-    # files are needed for input generation
-    testcases = list(iter_GEN(os.path.join(base_dir, gen_GEN)))
-    testcase_num = len(testcases)
-    copy_files = [x[1] for x in testcases if x[0]]
-
-    def compile_src(src, exe, lang, assume=None):
-        if lang in ['cpp', 'c', 'pas']:
-            commands = get_compilation_commands(lang, [src], exe,
-                                                for_evaluation=False)
-            for command in commands:
-                call(base_dir, command)
-        elif lang in ['py', 'sh']:
-            os.symlink(os.path.basename(src), exe)
-        else:
-            raise Exception("Wrong generator/validator language!")
-
-    # Question: why, differently from outputs, inputs have to be
-    # created all together instead of selectively over those that have
-    # been changed since last execution? This is a waste of time,
-    # usually generating inputs is a pretty long thing. Answer:
-    # because cmsMake architecture, which is based on file timestamps,
-    # doesn't make us able to understand which lines of gen/GEN have
-    # been changed. Douch! We'll have to think better this thing for
-    # the new format we're developing.
-    def make_input(assume=None):
-        n = 0
-        try:
-            os.makedirs(input_dir)
-        except OSError:
-            pass
-        for (is_copy, line, st) in testcases:
-            print(
-                "Generating",
-                add_color_to_string("input # %d" % n, colors.BLACK,
-                                    stream=sys.stderr, bold=True),
-                file=sys.stderr
-            )
-            new_input = os.path.join(input_dir, 'input%d.txt' % (n))
-            if is_copy:
-                # Copy the file
-                print("> Copy input file from:", line)
-                copy_input = os.path.join(base_dir, line)
-                shutil.copyfile(copy_input, new_input)
-            else:
-                # Call the generator
-                with io.open(new_input, 'wb') as fout:
-                    call(base_dir,
-                         [gen_exe] + line.split(),
-                         stdout=fout)
-            command = [validator_exe, new_input]
-            if st != 0:
-                command.append("%s" % st)
-            call(base_dir, command)
-            n += 1
-            for i in xrange(3):
-                move_cursor(directions.UP, erase=True, stream=sys.stderr)
-
-    def make_output(n, assume=None):
-        try:
-            os.makedirs(output_dir)
-        except OSError:
-            pass
-        print(
-            "Generating",
-            add_color_to_string("output # %d" % n, colors.BLACK,
-                                stream=sys.stderr, bold=True),
-            file=sys.stderr
+class MakeException(Exception):
+    def __init__(self, tgt, msg="Generic error"):
+        super(MakeException, self).__init__(
+            "Target %s(%s) failed to build: %s" %
+            (tgt.__class__.__name__, tgt.name, msg)
         )
-        with io.open(os.path.join(input_dir,
-                                  'input%d.txt' % (n)), 'rb') as fin:
-            with io.open(os.path.join(output_dir,
-                                      'output%d.txt' % (n)), 'wb') as fout:
-                if task_type != ['Communication', '']:
-                    call(base_dir, [sol_exe], stdin=fin, stdout=fout)
-                    move_cursor(directions.UP, erase=True, stream=sys.stderr)
-                # If the task of of type Communication, then there is
-                # nothing to put in the output files
-                else:
-                    pass
-        move_cursor(directions.UP, erase=True, stream=sys.stderr)
-
-    actions = []
-    actions.append(([gen_src],
-                    [gen_exe],
-                    functools.partial(compile_src, gen_src, gen_exe, gen_lang),
-                    "compile the generator"))
-    actions.append(([validator_src],
-                    [validator_exe],
-                    functools.partial(compile_src, validator_src,
-                                      validator_exe, validator_lang),
-                    "compile the validator"))
-    actions.append(([gen_GEN, gen_exe, validator_exe] + copy_files,
-                    map(lambda x: os.path.join(INPUT_DIRNAME,
-                                               'input%d.txt' % (x)),
-                        range(0, testcase_num)),
-                    make_input,
-                    "input generation"))
-
-    for n in xrange(testcase_num):
-        actions.append(([os.path.join(INPUT_DIRNAME, 'input%d.txt' % (n)),
-                         sol_exe],
-                        [os.path.join(OUTPUT_DIRNAME, 'output%d.txt' % (n))],
-                        functools.partial(make_output, n),
-                        "output generation"))
-    in_out_files = [os.path.join(INPUT_DIRNAME, 'input%d.txt' % (n))
-                    for n in xrange(testcase_num)] + \
-                   [os.path.join(OUTPUT_DIRNAME, 'output%d.txt' % (n))
-                    for n in xrange(testcase_num)]
-    return actions, in_out_files
 
 
-def build_action_list(base_dir, task_type, yaml_conf):
-    """Build a list of actions that cmsMake is able to do here. Each
-    action is described by a tuple (infiles, outfiles, callable,
-    description) where:
+class Target(object):
+    def __init__(self, maker, name):
+        self.maker = maker
+        self.name = name
+        self.file = None
+        self.deps = []
+        self.already_run = False
 
-    1) infiles is a list of files this action depends on;
+    def run_command(self, c, stdin=None,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE):
+        proc = subprocess.Popen(c, stdin=stdin, stdout=stdout, stderr=stderr)
+        data = proc.communicate(stdin)
+        if proc.returncode != 0:
+            print(" ".join(c))
+            print(data[1])
+            raise MakeException(self, "Command failed!")
+        return data
 
-    2) outfiles is a list of files this action produces; it is
-    intended that this action can be skipped if all the outfiles is
-    newer than all the infiles; moreover, the outfiles get deleted
-    when the action is cleaned;
+    def __str__(self):
+        def dtn(d):
+            return (d[0].__name__,) + d[1:]
+        return "%s(%s): %s -> %s" % (
+            self.__class__.__name__,
+            self.name,
+            str(list(map(dtn, self.deps))),
+            self.file
+        )
 
-    3) callable is a callable Python object that, when called,
-    performs the action;
+    def last_run_time(self):
+        return os.stat(os.path.join(BUILDDIR, self.file)).st_mtime
 
-    4) description is a human-readable description of what this
-    action does.
+    def work(self):
+        pass
 
-    """
-    actions = []
-    gen_actions, in_out_files = build_gen_list(base_dir, task_type)
-    actions += gen_actions
-    actions += build_sols_list(base_dir, task_type, in_out_files, yaml_conf)
-    actions += build_checker_list(base_dir, task_type)
-    actions += build_text_list(base_dir, task_type)
-    return actions
-
-
-def clean(base_dir, generated_list):
-    # Delete all generated files
-    for f in generated_list:
+    def run(self):
+        def tgt(x):
+            return self.maker.get_tgt(*x)
+        if not all(map(lambda x: tgt(x).already_run, self.deps)):
+            return False
+        if self.file is not None and os.path.exists(self.file):
+            src = os.path.relpath(
+                self.file,
+                os.path.dirname(os.path.join(BUILDDIR, self.file))
+            )
+            link(src, self.file)
         try:
-            os.remove(os.path.join(base_dir, f))
-        except OSError:
+            lr = self.last_run_time()
+            dtimes = [tgt(x).last_run_time() for x in self.deps]
+            if all(map(lambda x: lr >= x, dtimes)):
+                self.already_run = True
+                return True
+        except:
             pass
 
-    # Delete other things
-    try:
-        os.rmdir(os.path.join(base_dir, INPUT_DIRNAME))
-    except OSError:
-        pass
-    try:
-        os.rmdir(os.path.join(base_dir, OUTPUT_DIRNAME))
-    except OSError:
-        pass
-    try:
-        shutil.rmtree(os.path.join(base_dir, RESULT_DIRNAME))
-    except OSError:
-        pass
-
-    # Delete backup files
-    os.system("find %s -name '*.pyc' -delete" % (base_dir))
-    os.system("find %s -name '*~' -delete" % (base_dir))
+        self.work()
+        self.already_run = True
+        return True
 
 
-def build_execution_tree(actions):
-    """Given a set of actions as described in the docstring of
-    build_action_list(), builds an execution tree and the list of all
-    the buildable files. The execution tree is a dictionary that maps
-    each builable or source file to the tuple (infiles, callable),
-    where infiles and callable are as in the docstring of
-    build_action_list().
+class LinkTarget(Target):
+    def __init__(self, maker, name, src=None):
+        # src defaults to ../name
+        # All paths are relative to BUILDDIR
+        if src is None:
+            src = os.path.join("..", name)
+        super(LinkTarget, self).__init__(maker, name)
+        self.file = name
+        self.src = os.path.relpath(
+            os.path.join(BUILDDIR, src),
+            os.path.dirname(os.path.join(BUILDDIR, self.file))
+        )
 
-    """
-    exec_tree = {}
-    generated_list = []
-    src_list = set()
-    for action in actions:
-        for exe in action[1]:
-            if exe in exec_tree:
-                raise Exception("Target %s not unique" % (exe))
-            exec_tree[exe] = (action[0], action[2])
-            generated_list.append(exe)
-        for src in action[0]:
-            src_list.add(src)
-    for src in src_list:
-        if src not in exec_tree:
-            exec_tree[src] = ([], noop)
-    return exec_tree, generated_list
+    def work(self):
+        if self.file[0] == '/':
+            return
+        link(self.src, self.file)
 
 
-def execute_target(base_dir, exec_tree, target,
-                   already_executed=None, stack=None,
-                   debug=False, assume=None):
-    # Initialization
-    if debug:
-        print(">> Target %s is requested" % (target))
-    if already_executed is None:
-        already_executed = set()
-    if stack is None:
-        stack = set()
+class CompileTarget(Target):
+    def __init__(self, maker, name):
+        super(CompileTarget, self).__init__(maker, name)
+        self.file = name
+        source = None
+        self.lang = None
+        for ext in SOURCE_EXT_TO_LANGUAGE_MAP:
+            lang = SOURCE_EXT_TO_LANGUAGE_MAP[ext]
+            if os.path.exists(self.file + ext):
+                source = self.file + ext
+                self.lang = lang
+        if source is None:
+            raise MakeException(self, "No source found!")
+        self.deps = [(LinkTarget, source)]
+        self.source = os.path.join(BUILDDIR, source)
+        self.deps += maker.get_manager_tgt()
 
-    # Get target information
-    deps = exec_tree[target][0]
-    action = exec_tree[target][1]
-
-    # If this target is already in the stack, we have a circular
-    # dependency
-    if target in stack:
-        raise Exception("Circular dependency detected")
-
-    # If the target was already made in another subtree, we have
-    # nothing to do
-    if target in already_executed:
-        if debug:
-            print(">> Target %s has already been built, ignoring..." %
-                  (target))
-        return
-
-    # Otherwise, do a step of the DFS to make dependencies
-    if debug:
-        print(">> Building dependencies for target %s" % (target))
-    already_executed.add(target)
-    stack.add(target)
-    for dep in deps:
-        execute_target(base_dir, exec_tree, dep,
-                       already_executed, stack, assume=assume)
-    stack.remove(target)
-    if debug:
-        print(">> Dependencies built for target %s" % (target))
-
-    # Check if the action really needs to be done (i.e., there is one
-    # dependency more recent than the generated file)
-    dep_times = max([0] + map(lambda dep: os.stat(
-        os.path.join(base_dir, dep)).st_mtime, deps))
-    try:
-        gen_time = os.stat(os.path.join(base_dir, target)).st_mtime
-    except OSError:
-        gen_time = 0
-    if gen_time >= dep_times:
-        if debug:
-            print(">> Target %s is already new enough, not building" %
-                  (target))
-        return
-
-    # At last: actually make the so long desired action :-)
-    if debug:
-        print(">> Acutally building target %s" % (target))
-    action(assume=assume)
-    if debug:
-        print(">> Target %s finished to build" % (target))
+    def work(self):
+        digest = self.maker.filecacher.put_file_from_path(self.source)
+        fname = os.path.splitext(os.path.basename(self.source))[0]
+        fobj = File(fname + '.%l', digest)
+        job = CompilationJob(
+            language=self.lang,
+            files={fname + '.%l': fobj},
+            managers=self.maker.get_managers()
+        )
+        self.maker.task_type.compile(job, self.maker.filecacher)
+        if not job.success:
+            raise MakeException(self, "Something weird happened!")
+        if not job.compilation_success:
+            print(job.plus['stderr'])
+            raise MakeException(self, "Compilation failed!")
+        self.maker.filecacher.get_file_to_path(
+            job.executables[fname].digest,
+            os.path.join(BUILDDIR, self.file)
+        )
+        self.run_command(["chmod", "+x", os.path.join(BUILDDIR, self.file)])
 
 
-def execute_multiple_targets(base_dir, exec_tree, targets,
-                             debug=False, assume=None):
-    already_executed = set()
-    for target in targets:
-        execute_target(base_dir, exec_tree, target,
-                       already_executed, debug=debug, assume=assume)
+class MakerCompileTarget(Target):
+    def __init__(self, maker, name):
+        super(MakerCompileTarget, self).__init__(maker, name)
+        self.file = name
+        self.source = None
+        self.lang = None
+        for ext in SOURCE_EXT_TO_LANGUAGE_MAP:
+            lang = SOURCE_EXT_TO_LANGUAGE_MAP[ext]
+            if os.path.exists(self.file + ext):
+                self.source = self.file + ext
+                self.lang = lang
+        if self.source is None:
+            raise MakeException(self, "No source found!")
+        self.deps = [(LinkTarget, self.source)]
+
+    def work(self):
+        src = os.path.join(BUILDDIR, self.source)
+        dst = os.path.join(BUILDDIR, self.file)
+        if self.lang != LANG_PYTHON:
+            commands = get_compilation_commands(self.lang, [src], dst)
+        else:
+            commands = [[
+                'ln', '-s',
+                os.path.relpath(src, os.path.dirname(dst)),
+                dst
+            ]]
+        for c in commands:
+            self.run_command(c)
+
+
+class GeneratorTarget(Target):
+    def __init__(self, maker, name):
+        super(GeneratorTarget, self).__init__(maker, name)
+        self.file = os.path.join(GENDIR, name)
+        self.deps = [(MakerCompileTarget, self.file)]
+
+
+class ValidatorTarget(Target):
+    def __init__(self, maker, name):
+        super(ValidatorTarget, self).__init__(maker, name)
+        self.file = os.path.join(VALDIR, name)
+        self.deps = [(MakerCompileTarget, self.file)]
+
+
+class SolutionTarget(Target):
+    def __init__(self, maker, name):
+        super(SolutionTarget, self).__init__(maker, name)
+        self.file = os.path.join(SOLDIR, name)
+        self.deps = [(CompileTarget, self.file)]
+
+
+class GenInputTarget(Target):
+    def __init__(self, maker, name, gen, val, line):
+        super(GenInputTarget, self).__init__(maker, name)
+        self.file = infile(name)
+        self.line = line
+        self.gen = os.path.join(BUILDDIR, GENDIR, gen)
+        self.val = os.path.join(BUILDDIR, VALDIR, val)
+        self.deps = [
+            (LinkTarget, TCFILE),
+            (GeneratorTarget, gen),
+            (ValidatorTarget, val)
+        ]
+
+    def work(self):
+        rfile = os.path.join(BUILDDIR, self.file)
+        try:
+            os.makedirs(os.path.dirname(rfile))
+        except:
+            pass
+        with open(rfile, 'w') as f:
+            self.run_command([self.gen] + self.line.split(), stdout=f)
+        self.run_command([self.val, rfile])
+
+
+class ExampleInputTarget(Target):
+    def __init__(self, maker, name):
+        super(ExampleInputTarget, self).__init__(maker, name)
+        self.file = infile("example_%s" % name)
+        src = os.path.join("..", EXDIR, name, "input.txt")
+        self.deps = [(LinkTarget, self.file, src)]
+
+
+class CopyInputTarget(Target):
+    def __init__(self, maker, name, orig):
+        super(CopyInputTarget, self).__init__(maker, name)
+        self.file = infile(name)
+        src = infile(orig)
+        self.deps = [maker.testcases[orig]['params'],
+                     (LinkTarget, self.file, src)]
+
+
+class OutputTarget(Target):
+    def __init__(self, maker, name):
+        super(OutputTarget, self).__init__(maker, name)
+        self.file = outfile(name)
+        self.deps = [maker.testcases[name]['params'],
+                     (SolutionTarget, SOLNAME)]
+
+    def work(self):
+        inname = os.path.join(
+            BUILDDIR,
+            self.maker.get_tgt(*self.deps[0]).file
+        )
+        indigest = self.maker.filecacher.put_file_from_path(inname)
+        edigest = self.maker.filecacher.put_file_from_path(
+            os.path.join(BUILDDIR, SOLDIR, SOLNAME)
+        )
+        eobj = Executable(SOLNAME, edigest)
+        lang = self.maker.get_tgt(SolutionTarget, SOLNAME)
+        lang = self.maker.get_tgt(*lang.deps[0]).lang
+        job = EvaluationJob(
+            language=lang,
+            executables={SOLNAME: eobj},
+            managers=self.maker.get_managers(),
+            input=indigest,
+            get_output=True,
+            only_execution=True,
+            memory_limit=2048,
+            time_limit=20
+        )
+        self.maker.task_type.evaluate(job, self.maker.filecacher)
+        if not job.success:
+            raise MakeException(self, "Something weird happened!")
+        if job.outcome is None or job.user_output is None:
+            print(job.text[0] % job.text[1:])
+            raise MakeException(self, "Output creation failed!")
+        try:
+            os.makedirs(os.path.join(BUILDDIR, "output"))
+        except:
+            pass
+        self.maker.filecacher.get_file_to_path(
+            job.user_output,
+            os.path.join(BUILDDIR, self.file)
+        )
+
+
+class TestSolutionTarget(Target):
+    def __init__(self, maker, name):
+        super(TestSolutionTarget, self).__init__(maker, name)
+        self.deps = [(SolutionTarget, name)]
+        self.deps += maker.get_output_tgt()
+        self.deps += maker.get_manager_tgt()
+
+    def work(self):
+        raise NotImplementedError(self.__class__.__name__)
+
+
+class cmsMaker:
+    def __init__(self, basedir='.'):
+        self.targets = dict()
+        self.orig_cwd = os.getcwd()
+        self.basedir = os.path.realpath(basedir)
+        self.filecacher = FileCacher(null=True)
+        os.chdir(self.basedir)
+        try:
+            self.testcases = dict()
+
+            if os.path.isdir(EXDIR):
+                for name in os.listdir(EXDIR):
+                    d = os.path.join(EXDIR, name)
+                    if not os.path.isdir(d):
+                        continue
+                    tc = dict()
+                    tc['name'] = "example_%s" % name
+                    tc['params'] = (ExampleInputTarget, name)
+                    self.testcases[tc['name']] = tc
+
+            with open("testcases.yaml") as f:
+                tc_data = yaml.load(f)
+
+            # Propagate gen/val/limits information
+            if 'limits' not in tc_data:
+                tc_data['limits'] = None
+            for gv in ['generator', 'validator', 'limits']:
+                if gv not in tc_data:
+                    tc_data[gv] = gv
+                if 'testcases' in tc_data:
+                    for t in tc_data['testcases']:
+                        if gv not in t:
+                            t[gv] = tc_data[gv]
+                if 'subtasks' in tc_data:
+                    for s in tc_data['subtasks']:
+                        if gv not in s:
+                            s[gv] = tc_data[gv]
+                        for t in s['testcases']:
+                            if gv not in t:
+                                t[gv] = s[gv]
+
+            idx = 0
+
+            def parse_tc(tc, idx):
+                if 'name' not in tc:
+                    if 'copy' not in tc:
+                        tc['name'] = '%03d' % idx
+                    else:
+                        tc['name'] = '%03d_%s' (idx, tc['copy'])
+                if 'copy' in tc:
+                    orig = tc['copy']
+                    tc['params'] = (CopyInputTarget, tc['name'], orig)
+                else:
+                    tc['params'] = (GenInputTarget, tc['name'],
+                                    tc['generator'], tc['validator'],
+                                    tc['gen_line'])
+                return tc
+
+            if 'testcases' in tc_data:
+                for tc in tc_data['testcases']:
+                    tc = parse_tc(tc, idx)
+                    idx += 1
+                    self.testcases[tc['name']] = tc
+
+            if 'subtasks' in tc_data:
+                for s in tc_data['subtasks']:
+                    for tc in s['testcases']:
+                        tc = parse_tc(tc, idx)
+                        idx += 1
+                        self.testcases[tc['name']] = tc
+
+            # Managers and task type
+            with open('task.yaml', 'r') as f:
+                conf = yaml.load(f)
+            self.managers = {}
+            use_grader = False
+            task_type = conf.get('task_type', 'Batch')
+            if os.path.isdir(MANDIR):
+                for f in os.listdir(MANDIR):
+                    path = os.path.join(MANDIR, f)
+                    if f.startswith('grader'):
+                        self.managers[f] = (LinkTarget, path)
+                        use_grader = True
+                    else:
+                        self.managers[os.path.splitext(f)[0]] = (
+                            MakerCompileTarget,
+                            os.path.splitext(path)[0]
+                        )
+            params = conf.get(
+                'task_type_parameters',
+                '["%s", ["%s", "%s"], "%s"]' %
+                ('grader' if use_grader else 'alone',
+                 conf.get('infile', 'input.txt'),
+                 conf.get('outfile', 'output.txt'),
+                 'comparator' if 'checker' in self.managers else 'diff')
+            )
+            self.task_type = get_task_type(name=task_type, parameters=params)
+        finally:
+            os.chdir(self.orig_cwd)
+
+    def get_tgt(self, cls, *args):
+        key = tuple((cls,) + args)
+        if key not in self.targets:
+            self.targets[key] = cls(self, *args)
+        return self.targets[key]
+
+    def _add_tgt(self, cls, *args):
+        tgt = self.get_tgt(cls, *args)
+        for d in tgt.deps:
+            self._add_tgt(*d)
+
+    def add_tgt(self, cls, *args):
+        os.chdir(self.basedir)
+        try:
+            self._add_tgt(cls, *args)
+        finally:
+            os.chdir(self.orig_cwd)
+
+    def get_output_tgt(self):
+        return [(OutputTarget, name) for name in self.testcases]
+
+    def get_manager_tgt(self):
+        return self.managers.values()
+
+    def get_managers(self):
+        if hasattr(self, 'cached_managers'):
+            return self.cached_managers
+        d = os.path.join(BUILDDIR, MANDIR)
+        ret = dict()
+        if os.path.isdir(d):
+            for f in os.listdir(d):
+                path = os.path.join(d, f)
+                ret[f] = Manager(
+                    f,
+                    self.filecacher.put_file_from_path(path)
+                )
+        self.cached_managers = ret
+        return ret
+
+    def run(self):
+        os.chdir(self.basedir)
+        try:
+            to_run = self.targets.keys()
+            while len(to_run):
+                run_next = []
+                for k in to_run:
+                    if not self.targets[k].run():
+                        run_next.append(k)
+                to_run = run_next
+        finally:
+            os.chdir(self.orig_cwd)
 
 
 def main():
-    # Parse command line options
-    parser = argparse.ArgumentParser()
-    group = parser.add_mutually_exclusive_group()
-    parser.add_argument("-D", "--base-dir", action="store", type=utf8_decoder,
-                        help="base directory for problem to make "
-                        "(CWD by default)")
-    parser.add_argument("-l", "--list", action="store_true", default=False,
-                        help="list actions that cmsMake is aware of")
-    parser.add_argument("-c", "--clean", action="store_true", default=False,
-                        help="clean all generated files")
-    parser.add_argument("-a", "--all", action="store_true", default=False,
-                        help="make all targets")
-    group.add_argument("-y", "--yes",
-                       dest="assume", action="store_const", const='y',
-                       help="answer yes to all questions")
-    group.add_argument("-n", "--no",
-                       dest="assume", action="store_const", const='n',
-                       help="answer no to all questions")
-    parser.add_argument("-d", "--debug", action="store_true", default=False,
-                        help="enable debug messages")
-    parser.add_argument("targets", action="store", type=utf8_decoder,
-                        nargs="*", metavar="target", help="target to build")
-    options = parser.parse_args()
+    maker = cmsMaker()
+    maker.add_tgt(TestSolutionTarget, SOLNAME)
+    maker.run()
 
-    base_dir = options.base_dir
-    if base_dir is None:
-        base_dir = os.getcwd()
-    else:
-        base_dir = os.path.abspath(base_dir)
-
-    assume = options.assume
-
-    task_type = detect_task_type(base_dir)
-    yaml_conf = parse_task_yaml(base_dir)
-    actions = build_action_list(base_dir, task_type, yaml_conf)
-    exec_tree, generated_list = build_execution_tree(actions)
-
-    if [len(options.targets) > 0, options.list, options.clean,
-            options.all].count(True) > 1:
-        parser.error("Too many commands")
-
-    if options.list:
-        print("Task name: %s" % (detect_task_name(base_dir)))
-        print("Task type: %s %s" % (task_type[0], task_type[1]))
-        print("Available operations:")
-        for entry in actions:
-            print("  %s: %s -> %s" %
-                  (entry[3], ", ".join(entry[0]), ", ".join(entry[1])))
-
-    elif options.clean:
-        print("Cleaning")
-        clean(base_dir, generated_list)
-
-    elif options.all:
-        print("Making all targets")
-        print()
-        try:
-            execute_multiple_targets(base_dir, exec_tree,
-                                     generated_list, debug=options.debug,
-                                     assume=assume)
-
-        # After all work, possibly clean the left-overs of testing
-        finally:
-            clean_test_env()
-
-    else:
-        try:
-            execute_multiple_targets(base_dir, exec_tree,
-                                     options.targets, debug=options.debug,
-                                     assume=assume)
-
-        # After all work, possibly clean the left-overs of testing
-        finally:
-            clean_test_env()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

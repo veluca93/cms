@@ -213,7 +213,8 @@ class EvaluationJob(Job):
                  time_limit=None, memory_limit=None,
                  success=None, outcome=None, text=None,
                  user_output=None, plus=None,
-                 only_execution=False, get_output=False):
+                 only_execution=False, get_output=False,
+                 out_size=100 * 1024):
         """Initialization.
 
         See base class for the remaining arguments.
@@ -245,6 +246,8 @@ class EvaluationJob(Job):
         get_output (bool|None): whether to retrieve the execution
             output (together with only_execution, useful for the user
             tests).
+        out_size (int|None): maximum size to retrieve. None if
+            unlimited, defaults to 100 * 1024.
 
         """
         if files is None:
@@ -271,6 +274,7 @@ class EvaluationJob(Job):
         self.plus = plus
         self.only_execution = only_execution
         self.get_output = get_output
+        self.out_size = out_size
 
     def export_to_dict(self):
         res = Job.export_to_dict(self)
