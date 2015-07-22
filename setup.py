@@ -69,6 +69,11 @@ PACKAGE_DATA = {
         os.path.join("tasks", "communication", "code", "*"),
         os.path.join("tasks", "communication", "data", "*.*"),
     ],
+    "cmstaskenv": [
+        os.path.join("templates", "cms-contest", "*.*"),
+        os.path.join("templates", "cms-contest", "data", "*.*"),
+        os.path.join("templates", "cms-contest", "data", "locale", "*.*"),
+    ]
 }
 
 

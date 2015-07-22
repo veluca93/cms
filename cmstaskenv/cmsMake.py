@@ -18,7 +18,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import shutil
 import subprocess
+import argparse
 import yaml
 
 from cms import SOURCE_EXT_TO_LANGUAGE_MAP, LANG_PYTHON
@@ -27,6 +29,7 @@ from cms.db.filecacher import FileCacher
 from cms.grading import get_compilation_commands
 from cms.grading.Job import CompilationJob, EvaluationJob
 from cms.grading.tasktypes import get_task_type
+from cmstaskenv import texbinder
 
 BUILDDIR = 'generated-files'
 TEXTDIR = 'text'
@@ -338,7 +341,17 @@ class TestSolutionTarget(Target):
         raise NotImplementedError(self.__class__.__name__)
 
 
-class cmsMaker:
+class BuildStatementTarget(Target):
+    def __init__(self, maker, name):
+        super(BuildStatementTarget, self).__init__(maker, name)
+        self.deps += maker.get_output_tgt()
+        self.deps += maker.get_manager_tgt()
+
+    def work(self):
+        texbinder.compile_task_pdf()
+
+
+class cmsMaker(object):
     def __init__(self, basedir='.'):
         self.targets = dict()
         self.orig_cwd = os.getcwd()
@@ -493,7 +506,7 @@ class cmsMaker:
 
 def main():
     maker = cmsMaker()
-    maker.add_tgt(TestSolutionTarget, SOLNAME)
+    maker.add_tgt(BuildStatementTarget, SOLNAME)
     maker.run()
 
 if __name__ == "__main__":

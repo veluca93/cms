@@ -1,0 +1,13 @@
+contest:
+    fontenc: 'T1'
+    inputenc: 'utf8'
+    logo: ''
+    location: ''
+    date: ''
+    showsummary: true
+
+problem:
+    infile: 'stdin'
+    outfile: 'stdout'
+    time_limit: '1 s'
+    memory_limit: '256 MiB'
