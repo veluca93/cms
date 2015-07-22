@@ -144,7 +144,7 @@ def compile_task_pdf():
     )
     parser.add_argument(
         '-t', '--template',
-        required = True,
+        default = 'cms-contest',
         help = 'The template to be used'
     )
     parser.add_argument(
