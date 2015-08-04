@@ -214,6 +214,15 @@ class UserTestHandler(BaseHandler):
             self.redirect("/testing?%s" % quote(task.name, safe=''))
             return
 
+        # Get the files from a submission sent as a form - e.g. one from
+        # the in-browser editor.
+        if len(self.request.files) == 0:
+            for k, lv in self.request.arguments.iteritems():
+                self.request.files[k] = [{
+                    'filename': k,
+                    'body': v
+                } for v in lv]
+
         # Ensure that the user did not submit multiple files with the
         # same name.
         if any(len(filename) != 1 for filename in self.request.files.values()):

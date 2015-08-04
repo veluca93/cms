@@ -100,47 +100,130 @@ $(document).ready(function () {
     </div>
 {% end %}
 
-<div id="submit_solution" class="row">
-    <div class="span5">
-        <form class="form-horizontal" enctype="multipart/form-data" action="{{ url_root }}/tasks/{{ encode_for_url(task.name) }}/submit" method="POST">
-            <fieldset>
+<div id="submit_solution" class="row span9">
+    <ul class="nav nav-tabs row" data-tabs="tab">
+        <li class="tab-title active"><a href="#fromfile" data-toggle="tab">{{ _("Submit from files") }}</a></li>
+{% if any(map(lambda x: x.filename.endswith('.%l'), task.submission_format)) %}
+        <li class="tab-title"><a href="#inbrowser" data-toggle="tab">{{ _("In-browser editor") }}</a></li>
+{% end %}
+    </ul>
+    <div class="tab-content row">
+        <div class="tab-pane active row" id="fromfile">
+            <div class="span5">
+                <form class="form-horizontal" enctype="multipart/form-data" action="{{ url_root }}/tasks/{{ encode_for_url(task.name) }}/submit" method="POST">
+                    <fieldset>
 {% for idx, filename in enumerate(x.filename for x in task.submission_format) %}
-                <div class="control-group">
-                    <label class="control-label" for="input{{ idx }}">{{ filename.replace(".%l", "") }}</label>
-                    <div class="controls">
-                        <input type="file" class="input-xlarge" id="input{{ idx }}" name="{{ filename }}"/>
-                    </div>
-                </div>
+                        <div class="control-group">
+                            <label class="control-label" for="input{{ idx }}">{{ filename.replace(".%l", "") }}</label>
+                            <div class="controls">
+                                <input type="file" class="input-xlarge" id="input{{ idx }}" name="{{ filename }}"/>
+                            </div>
+                        </div>
 {% end %}
-                <div class="control-group">
-                    <div class="controls">
-                        <button type="submit" class="btn btn-success">{{ _("Submit") }}</button>
-                        <button type="reset" class="btn">{{ _("Reset") }}</button>
-                    </div>
-                </div>
-            </fieldset>
-        </form>
-    </div>
+                        <div class="control-group">
+                            <div class="controls">
+                                <button type="submit" class="btn btn-success">{{ _("Submit") }}</button>
+                                <button type="reset" class="btn">{{ _("Reset") }}</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                </form>
+            </div>
 {% if len(task.submission_format) > 1 %}
-    <div class="span4">
-        <form class="form-horizontal" enctype="multipart/form-data" action="{{ url_root }}/tasks/{{ encode_for_url(task.name) }}/submit" method="POST">
-            <fieldset>
-                <div class="control-group">
-                    <label class="control-label" for="input_zip">{{ _("submission.zip") }}</label>
-                    <div class="controls">
-                        <input type="file" class="input-xlarge" id="input_zip" name="submission"/>
-                    </div>
-                </div>
-                <div class="control-group">
-                    <div class="controls">
-                        <button type="submit" class="btn btn-success">{{ _("Submit") }}</button>
-                        <button type="reset" class="btn">{{ _("Reset") }}</button>
-                    </div>
-                </div>
-            </fieldset>
-        </form>
-    </div>
+            <div class="span4">
+                <form class="form-horizontal" enctype="multipart/form-data" action="{{ url_root }}/tasks/{{ encode_for_url(task.name) }}/submit" method="POST">
+                    <fieldset>
+                        <div class="control-group">
+                            <label class="control-label" for="input_zip">{{ _("submission.zip") }}</label>
+                            <div class="controls">
+                                <input type="file" class="input-xlarge" id="input_zip" name="submission"/>
+                            </div>
+                        </div>
+                        <div class="control-group">
+                            <div class="controls">
+                                <button type="submit" class="btn btn-success">{{ _("Submit") }}</button>
+                                <button type="reset" class="btn">{{ _("Reset") }}</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                </form>
+            </div>
 {% end %}
+        </div>
+{% if any(map(lambda x: x.filename.endswith('.%l'), task.submission_format)) %}
+        <div class="tab-pane row" id="inbrowser">
+            <form class="form-horizontal row span9">
+                <script type="text/javascript">
+                    function updateLang() {
+                        var ext_to_mode = {
+                            ".cpp": "c_cpp",
+                            ".c": "c_cpp",
+                            ".pas": "pascal",
+                            ".py": "python",
+                            ".php": "php",
+                            ".java": "java"
+                        }
+                        var el = document.getElementsByName("language")[0];
+                        el.editor.getSession().setMode("ace/mode/" + ext_to_mode[el.value]);
+                        var ins = document.getElementById("ibform").getElementsByTagName("input");
+                        for (var txt=0; txt < ins.length; txt++)
+                            ins[txt].name = ins[txt].id.replace(".%l", el.value);
+                    }
+                    function updateFile(filen) {
+                        var ed = document.getElementsByName("language")[0].editor;
+                        document.getElementById(ed.filename).value = ed.getValue();
+                        var file = document.getElementById(filen + ".%l");
+                        document.getElementById("ctrl_" + ed.filename).classList.remove("active")
+                        ed.filename = filen;
+                        document.getElementById("ctrl_" + ed.filename).classList.add("active")
+                        ed.setValue(file.value);
+                    }
+                </script>
+                <div class="control-group span5 offset2">
+                    <label class="control-label" for="language">{{ _("Language:") }}</label>
+                    <select name="language" onchange="updateLang()">
+{% for lang in task.contest.languages %}
+                        <option value="{{ LANGUAGE_TO_SOURCE_EXT_MAP[lang] }}">{{ LANGUAGE_NAMES[lang] }}</option>
+{% end %}
+                    </select>
+                </div>
+            </form>
+            <ul class="nav nav-pills nav-stacked span1">
+{% for sfe in task.submission_format %}
+{% if sfe.filename.endswith('.%l') %}
+                <li><a id="{{ 'ctrl_' + sfe.filename }}" onclick="updateFile({{ sfe.filename.replace('.%l', '') }})">{{ sfe.filename.replace(".%l", "") }}</a></li>
+{% end %}
+{% end %}
+            </ul>
+            <script src="/static/ace/ace.js" type="text/javascript" charset="utf-8"></script>
+            <div class="span7" id="ace_editor">
+                <div id="editor" style="height:400px" class="span7">{{ _("Write your code here") }}</div>
+            </div>
+            <form class="form-horizontal" enctype="multipart/form-data" action="{{ url_root }}/tasks/{{ encode_for_url(task.name) }}/submit" method="POST" id="ibform">
+{% for sfe in task.submission_format %}
+{% if sfe.filename.endswith('.%l') %}
+                <input type="hidden" id="{{ sfe.filename }}" />
+{% end %}
+{% end %}
+                <div class="controls span1 offset4">
+                    <button type="submit" class="btn btn-success">{{ _("Submit") }}</button>
+                </div>
+            </form>
+            <script type="text/javascript">
+                var editor = ace.edit("editor");
+                var first_file = "{{ task.submission_format[0].filename }}"
+                editor.setTheme("ace/theme/textmate");
+                editor.filename = first_file;
+                editor.getSession().on('change', function (e) {
+                    document.getElementById(editor.filename).value = editor.getValue();
+                });
+                document.getElementsByName("language")[0].editor = editor;
+                updateLang();
+                updateFile(first_file);
+            </script>
+        </div>
+{% end %}
+    </div>
 </div>
 
 

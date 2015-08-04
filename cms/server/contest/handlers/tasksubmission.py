@@ -44,7 +44,8 @@ import tornado.web
 
 from sqlalchemy import func
 
-from cms import config, filename_to_language
+from cms import config, filename_to_language, LANGUAGE_NAMES, \
+    LANGUAGE_TO_SOURCE_EXT_MAP
 from cms.db import File, Submission, SubmissionResult, Task, Token
 from cms.grading.scoretypes import get_score_type
 from cms.grading.tasktypes import get_task_type
@@ -154,6 +155,15 @@ class SubmitHandler(BaseHandler):
                 NOTIFICATION_ERROR)
             self.redirect("/tasks/%s/submissions" % quote(task.name, safe=''))
             return
+
+        # Get the files from a submission sent as a form - e.g. one from
+        # the in-browser editor.
+        if len(self.request.files) == 0:
+            for k, lv in self.request.arguments.iteritems():
+                self.request.files[k.split('.')[0] + '.%l'] = [{
+                    'filename': k,
+                    'body': v
+                } for v in lv]
 
         # Ensure that the user did not submit multiple files with the
         # same name.
