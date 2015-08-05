@@ -442,6 +442,12 @@ td.token_rules p:last-child {
     line-height: 18px;
 }
 
+/*** Code editor */
+
+#ace_editor {
+    margin-top: 10px;
+    margin-left: 0px;
+}
 
 /*** Submissions table */
 

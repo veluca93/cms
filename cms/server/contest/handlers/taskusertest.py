@@ -218,10 +218,11 @@ class UserTestHandler(BaseHandler):
         # the in-browser editor.
         if len(self.request.files) == 0:
             for k, lv in self.request.arguments.iteritems():
-                self.request.files[k] = [{
+                self.request.files[k.split('.')[0] + '.%l'] = [{
                     'filename': k,
                     'body': v
                 } for v in lv]
+
 
         # Ensure that the user did not submit multiple files with the
         # same name.
