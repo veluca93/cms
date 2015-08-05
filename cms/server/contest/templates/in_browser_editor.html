@@ -43,15 +43,15 @@
 </form>
 <div class="span9 row">
 {% if len(task.submission_format) > 1 %}
-    <ul class="nav nav-pills nav-stacked span1">
+    <ul class="nav nav-pills nav-stacked span2">
 {% for sfe in task.submission_format %}
-        <li><a id="{{ 'ctrl_' + sfe.filename }}" onclick="updateFile({{ sfe.filename }})">{{ sfe.filename.replace(".%l", "") }}</a></li>
+        <li><a id="{{ 'ctrl_' + sfe.filename }}" onclick="updateFile('{{ sfe.filename }}')">{{ sfe.filename.replace(".%l", "") }}</a></li>
 {% end %}
     </ul>
 {% end %}
     <script src="/static/ace/ace.js" type="text/javascript" charset="utf-8"></script>
-    <div class="{{ 'span8' if len(task.submission_format) > 1 else 'span9' }}" id="ace_editor">
-        <div id="editor" style="height:400px" class="{{ 'span8' if len(task.submission_format) > 1 else 'span9' }}">{{ _("Write your code here") }}</div>
+    <div class="{{ 'span7' if len(task.submission_format) > 1 else 'span9' }}" id="ace_editor">
+        <div id="editor" style="height:400px" class="{{ 'span7' if len(task.submission_format) > 1 else 'span9' }}">{{ _("Write your code here") }}</div>
     </div>
 </div>
 <form class="form-horizontal row span9" enctype="multipart/form-data" action="{{ url_root }}/tasks/{{ encode_for_url(task.name) }}/submit" method="POST" id="ibform">

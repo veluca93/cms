@@ -101,12 +101,10 @@ $(document).ready(function () {
 {% end %}
 
 <div id="submit_solution" class="row span9">
-{% if any(map(lambda x: x.filename.endswith('.%l'), task.submission_format)) %}
     <ul class="nav nav-tabs row" data-tabs="tab">
         <li class="tab-title active"><a href="#fromfile" data-toggle="tab">{{ _("Submit files") }}</a></li>
         <li class="tab-title"><a href="#inbrowser" data-toggle="tab">{{ _("In-browser editor") }}</a></li>
     </ul>
-{% end %}
     <div class="tab-content row">
         <div class="tab-pane active row" id="fromfile">
             <div class="span5">
@@ -150,11 +148,9 @@ $(document).ready(function () {
             </div>
 {% end %}
         </div>
-{% if any(map(lambda x: x.filename.endswith('.%l'), task.submission_format)) %}
     <div class="tab-pane row" id="inbrowser">
-    {% include in_browser_editor.html %}
+{% include in_browser_editor.html %}
     </div>
-{% end %}
     </div>
 </div>
 

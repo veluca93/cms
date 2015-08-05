@@ -160,7 +160,14 @@ class SubmitHandler(BaseHandler):
         # the in-browser editor.
         if len(self.request.files) == 0:
             for k, lv in self.request.arguments.iteritems():
-                self.request.files[k.split('.')[0] + '.%l'] = [{
+                finfo = k.split('.')
+                print (finfo)
+                if '.' + finfo[1] in LANGUAGE_TO_SOURCE_EXT_MAP.values():
+                    name = finfo[0] + '.%l'
+                else:
+                    name = k
+                print (name)
+                self.request.files[name] = [{
                     'filename': k,
                     'body': v
                 } for v in lv]
