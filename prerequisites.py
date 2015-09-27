@@ -148,6 +148,9 @@ def assert_not_root():
     if needed.
 
     """
+    if "--as-root" in sys.argv:
+        return
+
     if os.geteuid() == 0:
         print("[Error] You must *not* be root to do this, try avoiding 'sudo'")
         exit(1)
@@ -159,6 +162,9 @@ def get_real_user():
     In the case of a user *actually being root* we return an error.
 
     """
+    if "--as-root" in sys.argv:
+        return "root"
+
     name = os.getenv("SUDO_USER")
     if name is None:
         name = os.popen("logname").read().strip()
@@ -316,9 +322,13 @@ Available commands:
         cmsuser = pwd.getpwnam("cmsuser")
         root = pwd.getpwnam("root")
 
-        # Run build() command as not root
-        if os.system("sudo -u %s %s build" % (real_user, sys.argv[0])):
-            exit(1)
+        if "--as-root" in sys.argv:
+            # Run build() command as root
+            self.build()
+        else:
+            # Run build() command as not root
+            if os.system("sudo -u %s %s build" % (real_user, sys.argv[0])):
+                exit(1)
 
         self.install_l10n()
         self.install_isolate()
@@ -370,7 +380,8 @@ Available commands:
         os.umask(old_umask)
 
         print("===== Adding yourself to the cmsuser group")
-        if ask("Type Y if you want me to automatically add "
+        if "--as-root" not in sys.argv and \
+               ask("Type Y if you want me to automatically add "
                "\"%s\" to the cmsuser group: " % (real_user)):
             os.system("usermod -a -G cmsuser %s" % (real_user))
             print("""
