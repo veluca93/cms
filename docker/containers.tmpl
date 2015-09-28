@@ -1,0 +1,112 @@
+{{ range $host, $containers := groupBy $ "Env.VIRTUAL_HOST" }}
+
+upstream {{ $host }} {
+
+{{ range $index, $value := $containers }}
+    ip_hash;
+    {{ with $address := index $value.Addresses 0 }}
+    server {{ $address.IP }}:8888;
+    {{ end }}
+{{ end }}
+
+}
+
+upstream {{ $host }}-admin {
+
+{{ range $index, $value := $containers }}
+    ip_hash;
+    {{ with $address := index $value.Addresses 0 }}
+    server {{ $address.IP }}:8889;
+    {{ end }}
+{{ end }}
+
+}
+
+upstream {{ $host }}-ranking {
+
+{{ range $index, $value := $containers }}
+    ip_hash;
+    {{ with $address := index $value.Addresses 0 }}
+    server {{ $address.IP }}:8890;
+    {{ end }}
+{{ end }}
+
+}
+
+server {
+    listen 80 default_server;
+
+    gzip_types text/plain text/css application/json application/x-javascript
+               text/xml application/xml application/xml+rss text/javascript;
+
+    server_name srv{{ $host }};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Scheme $scheme;
+
+    location /{{ $host }} {
+        proxy_pass http://{{ $host }};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /{{ $host }}/aws {
+        proxy_pass http://{{ $host }}-admin;
+        include /etc/nginx/proxy_params;
+        auth_basic "Login for {{ $host }} admin panel";
+        auth_basic_user_file htpasswd/{{ $host }};
+    }
+
+    location /{{ $host }}/rws {
+        proxy_pass http://{{ $host }}-ranking;
+        include /etc/nginx/proxy_params;
+{{ range $index, $value := $containers }}
+    {{ if $value.Env.PUBLIC_RANKING }}
+    {{ else }}
+        auth_basic "Login for {{ $host }} ranking";
+        auth_basic_user_file htpasswd/{{ $host }};
+    {{ end }}
+{{ end }}
+    }
+}
+
+server {
+    listen 443 default_server ssl;
+
+    ssl_certificate /etc/nginx/ssl/allenamenti.crt;
+    ssl_certificate_key /etc/nginx/ssl/allenamenti.key;
+
+    gzip_types text/plain text/css application/json application/x-javascript
+               text/xml application/xml application/xml+rss text/javascript;
+
+    server_name srv{{ $host }};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Scheme $scheme;
+
+    location /{{ $host }} {
+        proxy_pass http://{{ $host }};
+        include /etc/nginx/proxy_params;
+    }
+
+    location /{{ $host }}/aws {
+        proxy_pass http://{{ $host }}-admin;
+        include /etc/nginx/proxy_params;
+        auth_basic "Login for {{ $host }} admin panel";
+        auth_basic_user_file htpasswd/{{ $host }};
+    }
+
+    location /{{ $host }}/rws {
+        proxy_pass http://{{ $host }}-ranking;
+        include /etc/nginx/proxy_params;
+{{ range $index, $value := $containers }}
+    {{ if $value.Env.PUBLIC_RANKING }}
+    {{ else }}
+        auth_basic "Login for {{ $host }} ranking";
+        auth_basic_user_file htpasswd/{{ $host }};
+    {{ end }}
+{{ end }}
+    }
+}
+{{ end }}
