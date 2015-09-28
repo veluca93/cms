@@ -1,9 +1,8 @@
 {{ range $host, $containers := groupBy $ "Env.VIRTUAL_HOST" }}
 
-upstream {{ $host }} {
+upstream upstr{{ $host }} {
 
 {{ range $index, $value := $containers }}
-    ip_hash;
     {{ with $address := index $value.Addresses 0 }}
     server {{ $address.IP }}:8888;
     {{ end }}
@@ -11,10 +10,9 @@ upstream {{ $host }} {
 
 }
 
-upstream {{ $host }}-admin {
+upstream upstr{{ $host }}-admin {
 
 {{ range $index, $value := $containers }}
-    ip_hash;
     {{ with $address := index $value.Addresses 0 }}
     server {{ $address.IP }}:8889;
     {{ end }}
@@ -22,10 +20,9 @@ upstream {{ $host }}-admin {
 
 }
 
-upstream {{ $host }}-ranking {
+upstream upstr{{ $host }}-ranking {
 
 {{ range $index, $value := $containers }}
-    ip_hash;
     {{ with $address := index $value.Addresses 0 }}
     server {{ $address.IP }}:8890;
     {{ end }}
@@ -33,33 +30,33 @@ upstream {{ $host }}-ranking {
 
 }
 
+{{ end }}
+
 server {
     listen 80 default_server;
 
     gzip_types text/plain text/css application/json application/x-javascript
                text/xml application/xml application/xml+rss text/javascript;
 
-    server_name srv{{ $host }};
+    server_name srv;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Scheme $scheme;
 
+{{ range $host, $containers := groupBy $ "Env.VIRTUAL_HOST" }}
     location /{{ $host }} {
-        proxy_pass http://{{ $host }};
-        include /etc/nginx/proxy_params;
+        proxy_pass http://upstr{{ $host }};
     }
 
     location /{{ $host }}/aws {
-        proxy_pass http://{{ $host }}-admin;
-        include /etc/nginx/proxy_params;
+        proxy_pass http://upstr{{ $host }}-admin;
         auth_basic "Login for {{ $host }} admin panel";
         auth_basic_user_file htpasswd/{{ $host }};
     }
 
     location /{{ $host }}/rws {
-        proxy_pass http://{{ $host }}-ranking;
-        include /etc/nginx/proxy_params;
+        proxy_pass http://upstr{{ $host }}-ranking;
 {{ range $index, $value := $containers }}
     {{ if $value.Env.PUBLIC_RANKING }}
     {{ else }}
@@ -68,6 +65,7 @@ server {
     {{ end }}
 {{ end }}
     }
+{{ end }}
 }
 
 server {
@@ -79,27 +77,25 @@ server {
     gzip_types text/plain text/css application/json application/x-javascript
                text/xml application/xml application/xml+rss text/javascript;
 
-    server_name srv{{ $host }};
+    server_name srv;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Scheme $scheme;
 
+{{ range $host, $containers := groupBy $ "Env.VIRTUAL_HOST" }}
     location /{{ $host }} {
-        proxy_pass http://{{ $host }};
-        include /etc/nginx/proxy_params;
+        proxy_pass http://upstr{{ $host }};
     }
 
     location /{{ $host }}/aws {
-        proxy_pass http://{{ $host }}-admin;
-        include /etc/nginx/proxy_params;
+        proxy_pass http://upstr{{ $host }}-admin;
         auth_basic "Login for {{ $host }} admin panel";
         auth_basic_user_file htpasswd/{{ $host }};
     }
 
     location /{{ $host }}/rws {
-        proxy_pass http://{{ $host }}-ranking;
-        include /etc/nginx/proxy_params;
+        proxy_pass http://upstr{{ $host }}-ranking;
 {{ range $index, $value := $containers }}
     {{ if $value.Env.PUBLIC_RANKING }}
     {{ else }}
@@ -108,5 +104,5 @@ server {
     {{ end }}
 {{ end }}
     }
-}
 {{ end }}
+}
