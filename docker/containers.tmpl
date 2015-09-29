@@ -58,8 +58,10 @@ server {
     location /{{ $host }}/rws {
         proxy_pass http://upstr{{ $host }}-ranking;
 {{ range $index, $value := $containers }}
-    {{ if $value.Env.PUBLIC_RANKING }}
-    {{ else }}
+    {{ if eq $value.Env.PUBLIC_RANKING "2" }}
+        auth_basic "Login for {{ $host }} ranking";
+        auth_basic_user_file htpasswd/{{ $host }}-rws;
+    {{ else if eq $value.Env.PUBLIC_RANKING "0" }}
         auth_basic "Login for {{ $host }} ranking";
         auth_basic_user_file htpasswd/{{ $host }};
     {{ end }}
@@ -97,8 +99,10 @@ server {
     location /{{ $host }}/rws {
         proxy_pass http://upstr{{ $host }}-ranking;
 {{ range $index, $value := $containers }}
-    {{ if $value.Env.PUBLIC_RANKING }}
-    {{ else }}
+    {{ if eq $value.Env.PUBLIC_RANKING "2" }}
+        auth_basic "Login for {{ $host }} ranking";
+        auth_basic_user_file htpasswd/{{ $host }}-rws;
+    {{ else if eq $value.Env.PUBLIC_RANKING "0" }}
         auth_basic "Login for {{ $host }} ranking";
         auth_basic_user_file htpasswd/{{ $host }};
     {{ end }}
