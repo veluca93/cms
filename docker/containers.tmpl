@@ -1,6 +1,6 @@
 {{ range $host, $containers := groupBy $ "Env.VIRTUAL_HOST" }}
 
-upstream upstr{{ $host }} {
+upstream upstream-{{ $host }} {
 
 {{ range $index, $value := $containers }}
     {{ with $address := index $value.Addresses 0 }}
@@ -10,7 +10,7 @@ upstream upstr{{ $host }} {
 
 }
 
-upstream upstr{{ $host }}-admin {
+upstream upstream-{{ $host }}-admin {
 
 {{ range $index, $value := $containers }}
     {{ with $address := index $value.Addresses 0 }}
@@ -20,7 +20,7 @@ upstream upstr{{ $host }}-admin {
 
 }
 
-upstream upstr{{ $host }}-ranking {
+upstream upstream-{{ $host }}-ranking {
 
 {{ range $index, $value := $containers }}
     {{ with $address := index $value.Addresses 0 }}
@@ -38,25 +38,25 @@ server {
     gzip_types text/plain text/css application/json application/x-javascript
                text/xml application/xml application/xml+rss text/javascript;
 
-    server_name srv;
+    server_name srv-80;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Scheme $scheme;
 
 {{ range $host, $containers := groupBy $ "Env.VIRTUAL_HOST" }}
-    location /{{ $host }} {
-        proxy_pass http://upstr{{ $host }};
+    location /{{ if ne $host "main"}}{{ $host }}{{ end }} {
+        proxy_pass http://upstream-{{ $host }}/;
     }
 
-    location /{{ $host }}/aws {
-        proxy_pass http://upstr{{ $host }}-admin;
+    location /{{ if ne $host "main"}}{{ $host }}/{{ end }}aws {
+        proxy_pass http://upstream-{{ $host }}-admin/;
         auth_basic "Login for {{ $host }} admin panel";
         auth_basic_user_file htpasswd/{{ $host }};
     }
 
-    location /{{ $host }}/rws {
-        proxy_pass http://upstr{{ $host }}-ranking;
+    location /{{ if ne $host "main"}}{{ $host }}/{{ end }}rws {
+        proxy_pass http://upstream-{{ $host }}-ranking/;
 {{ range $index, $value := $containers }}
     {{ if eq $value.Env.PUBLIC_RANKING "2" }}
         auth_basic "Login for {{ $host }} ranking";
@@ -79,25 +79,25 @@ server {
     gzip_types text/plain text/css application/json application/x-javascript
                text/xml application/xml application/xml+rss text/javascript;
 
-    server_name srv;
+    server_name srv-443;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Scheme $scheme;
 
 {{ range $host, $containers := groupBy $ "Env.VIRTUAL_HOST" }}
-    location /{{ $host }} {
-        proxy_pass http://upstr{{ $host }};
+    location /{{ if ne $host "main"}}{{ $host }}{{ end }} {
+        proxy_pass http://upstream-{{ $host }}/;
     }
 
-    location /{{ $host }}/aws {
-        proxy_pass http://upstr{{ $host }}-admin;
+    location /{{ if ne $host "main"}}{{ $host }}/{{ end }}aws {
+        proxy_pass http://upstream-{{ $host }}-admin/;
         auth_basic "Login for {{ $host }} admin panel";
         auth_basic_user_file htpasswd/{{ $host }};
     }
 
-    location /{{ $host }}/rws {
-        proxy_pass http://upstr{{ $host }}-ranking;
+    location /{{ if ne $host "main"}}{{ $host }}/{{ end }}rws {
+        proxy_pass http://upstream-{{ $host }}-ranking/;
 {{ range $index, $value := $containers }}
     {{ if eq $value.Env.PUBLIC_RANKING "2" }}
         auth_basic "Login for {{ $host }} ranking";
