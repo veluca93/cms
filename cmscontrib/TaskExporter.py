@@ -65,6 +65,10 @@ class TaskExporter(object):
         append_data(task_data, self.task, task_params)
         dataset = self.task.active_dataset
         append_data(task_data, dataset, dataset_params)
+        if dataset.task_type == 'Batch':
+            ioinfo = json.loads(dataset.task_type_parameters)[1]
+            task_data["infile"], task_data["outfile"] = map(str, ioinfo)
+
         fake_gen = []
         if dataset.score_type == 'GroupMin':
             for tc in json.loads(dataset.score_type_parameters):
@@ -122,7 +126,7 @@ class TaskExporter(object):
                 testcase.input,
                 os.path.join(ex_path, "input", "input%s.txt" % tcname))
             self.file_cacher.get_file_to_path(
-                testcase.input,
+                testcase.output,
                 os.path.join(ex_path, "output", "output%s.txt" % tcname))
 
         for attname, attachment in self.task.attachments.iteritems():
