@@ -53,7 +53,7 @@ class TaskExporter(object):
             for p in params:
                 data = getattr(obj, p)
                 if isinstance(data, unicode):
-                    data = str(data)
+                    data = data.encode('utf-8')
                 if isinstance(data, timedelta):
                     data = data.seconds
                 d[p] = data
@@ -95,6 +95,7 @@ class TaskExporter(object):
         os.mkdir(os.path.join(ex_path, "input"))
         os.mkdir(os.path.join(ex_path, "output"))
         os.mkdir(os.path.join(ex_path, "gen"))
+        os.mkdir(os.path.join(ex_path, "att"))
 
         with open(os.path.join(ex_path, 'task.yaml'), 'wb') as f:
             yaml.dump(task_data, default_flow_style=False, stream=f)
@@ -124,6 +125,11 @@ class TaskExporter(object):
                 testcase.input,
                 os.path.join(ex_path, "output", "output%s.txt" % tcname))
 
+        for attname, attachment in self.task.attachments.iteritems():
+            self.file_cacher.get_file_to_path(
+                attachment.digest,
+                os.path.join(ex_path, "att", attname))
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -150,6 +156,7 @@ def main():
         tasks = tasks.all()
         fc = FileCacher()
         for task in tasks:
+            logger.info("Exporting task %s", task.name)
             TaskExporter(args.target, task, fc).do_export()
         fc.destroy_cache()
 
