@@ -19,25 +19,29 @@
 
 """This script exports one or more tasks from the database to a folder,
 in italy_yaml format.
+
 """
 
 from __future__ import absolute_import
 from __future__ import print_function
+
+import argparse
 import logging
+import json
+import os
+from datetime import timedelta
+
+import yaml
 
 from cms import utf8_decoder
 from cms.db import Task, SessionGen
 from cms.db.filecacher import FileCacher
-from datetime import timedelta
-import os
-import yaml
-import argparse
-import json
+
 
 logger = logging.getLogger(__name__)
 
 
-class TaskExporter(object):
+class ExportTask(object):
     """This class exports a single task to disk"""
 
     def __init__(self, path, task, file_cacher):
@@ -46,9 +50,10 @@ class TaskExporter(object):
         self.file_cacher = file_cacher
 
     def do_export(self):
+        """Get the task from the database and save it"""
         ex_path = os.path.join(self.path, self.task.name)
-        task_data = dict()
 
+        # Export task.yaml info
         def append_data(d, obj, params):
             for p in params:
                 data = getattr(obj, p)
@@ -57,6 +62,7 @@ class TaskExporter(object):
                 if isinstance(data, timedelta):
                     data = data.seconds
                 d[p] = data
+        task_data = dict()
         task_params = [
             "name", "title", "token_mode", "token_max_number",
             "token_min_interval", "token_gen_initial", "token_gen_number",
@@ -69,6 +75,7 @@ class TaskExporter(object):
             ioinfo = json.loads(dataset.task_type_parameters)[1]
             task_data["infile"], task_data["outfile"] = map(str, ioinfo)
 
+        # Export gen/GEN
         fake_gen = []
         if dataset.score_type == 'GroupMin':
             for tc in json.loads(dataset.score_type_parameters):
@@ -80,16 +87,22 @@ class TaskExporter(object):
             raise NotImplementedError("Score type %s not implemented yet!" %
                                       dataset.score_type)
 
+        # Select statement to export
         if 'it' in self.task.statements:
             statement = self.task.statements['it']
         else:
             statement = self.task.statements.values()[0]
 
+        # Create directory
         try:
             os.makedirs(ex_path)
         except OSError:
             logger.warning("Error creating folder %s!", ex_path)
             return
+        # Graders are the only files stored in sol, so we
+        # create that directory only if there is any grader.
+        # Moreover, other managers go in check, so if other
+        # managers are present we create that folder too.
         gmap = map(lambda x: x.startswith('grader'), dataset.managers.keys())
         if any(gmap):
             os.mkdir(os.path.join(ex_path, "sol"))
@@ -101,24 +114,30 @@ class TaskExporter(object):
         os.mkdir(os.path.join(ex_path, "gen"))
         os.mkdir(os.path.join(ex_path, "att"))
 
+        # Actually write the files
+        # task.yaml
         with open(os.path.join(ex_path, 'task.yaml'), 'wb') as f:
             yaml.dump(task_data, default_flow_style=False, stream=f)
+        # gen/GEN
         with open(os.path.join(ex_path, "gen", "GEN"), 'wb') as f:
             f.write('\n'.join(fake_gen) + '\n')
 
+        # statement/statement.pdf
         self.file_cacher.get_file_to_path(
             statement.digest,
             os.path.join(ex_path, "statement", "statement.pdf"))
 
+        # sol/grader.* and check/*
         for fname, manager in dataset.managers.iteritems():
             if fname.startswith('grader'):
                 fld = 'sol'
             else:
-                fld = 'cor'
+                fld = 'check'
             self.file_cacher.get_file_to_path(
                 manager.digest,
                 os.path.join(ex_path, fld, fname))
 
+        # input/* and output/*
         testcases = dataset.testcases.values()
         testcases.sort(key=lambda x: x.codename)
         for tcname, testcase in enumerate(testcases):
@@ -129,6 +148,7 @@ class TaskExporter(object):
                 testcase.output,
                 os.path.join(ex_path, "output", "output%s.txt" % tcname))
 
+        # att/*
         for attname, attachment in self.task.attachments.iteritems():
             self.file_cacher.get_file_to_path(
                 attachment.digest,
@@ -161,8 +181,9 @@ def main():
         fc = FileCacher()
         for task in tasks:
             logger.info("Exporting task %s", task.name)
-            TaskExporter(args.target, task, fc).do_export()
+            ExportTask(args.target, task, fc).do_export()
         fc.destroy_cache()
+
 
 if __name__ == '__main__':
     main()
